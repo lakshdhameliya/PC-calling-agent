@@ -161,11 +161,13 @@ ECHO_WINDOW_SECONDS = 1.8
 # treated as possible echo: only a clear FAQ match is answered there, and the
 # "please repeat" prompt is never played for it.
 BOT_SPEECH_TAIL_SECONDS = 0.15
-# Answer only after the caller has finished: no answer from a live preview,
-# 700 ms of silence ends a question, questions up to 7 s.
-ALLOW_EARLY_PREVIEW_ANSWER = True
-HINDI_ENDPOINT_FRAMES = 2          # 200 ms of silence ends a question (fast conversational turn-taking)
-HINDI_MAX_UTTERANCE_FRAMES = 45    # 4.5 s cap for questions
+# Answer only after the caller has finished.  A phone call has short gaps
+# between words, so ending after 200-300 ms split normal Hindi sentences into
+# fragments ("address" / "refund" / "GST") and made the bot answer too early.
+# Keep previews for the live UI, but never let a preview trigger the answer.
+ALLOW_EARLY_PREVIEW_ANSWER = False
+HINDI_ENDPOINT_FRAMES = 7          # 700 ms of silence closes one utterance
+HINDI_MAX_UTTERANCE_FRAMES = 90    # 9 s cap; long address/product questions fit
 SPEECH_END_RATIO = 0.22            # Cleanly detects silence without getting trapped by low room noise
 FAR_VOICE_RATIO = 0.05
 # Audio while the bot talks is the bot's own echo unless it is loud.
@@ -1104,8 +1106,13 @@ class LiveFaqSegmenter:
         if self.parts:
             audio = np.concatenate(self.parts)
             duration = len(audio) / 16000.0
-            peak = float(np.max(np.abs(audio))) if len(audio) else 0.0
-            rms = float(np.sqrt(np.mean(audio * audio))) if len(audio) else 0.0
+            # The endpoint intentionally keeps a 700 ms silence tail so a
+            # short pause inside a sentence does not split the question. Do
+            # not let that tail lower the voice-level gate for quiet callers.
+            voiced_parts = self.parts[:-self.silence] if self.silence else self.parts
+            voiced_audio = np.concatenate(voiced_parts) if voiced_parts else audio
+            peak = float(np.max(np.abs(voiced_audio))) if len(voiced_audio) else 0.0
+            rms = float(np.sqrt(np.mean(voiced_audio * voiced_audio))) if len(voiced_audio) else 0.0
             # Guard against line noise/hum: caller voice has peak >= 0.19 and rms >= 0.038
             if duration >= 0.30 and self.voiced_frames >= 3 and (peak >= 0.19 or rms >= 0.038):
                 self.emit(audio, self.start or dt.datetime.now(), self.utterance_id, True)
@@ -1335,8 +1342,8 @@ class FrontbitLinkNoAdbBot:
             faq_matcher_warm_ms=round((time.perf_counter() - matcher_started) * 1000, 1),
             reply_voices=f"{CableVoice._voice_name('en')} / {CableVoice._voice_name('hi')} / {CableVoice._voice_name('gu')}",
             hindi_listening_mode="hybrid_preview_final_confirm",
-            hindi_endpoint_ms=300,
-            hindi_max_utterance_seconds=5,
+            hindi_endpoint_ms=HINDI_ENDPOINT_FRAMES * 100,
+            hindi_max_utterance_seconds=HINDI_MAX_UTTERANCE_FRAMES / 10,
             hindi_beam_size=self.hindi_beam_size,
             live_previews=self.previews_enabled(),
             hindi_vad_threshold=DIRECT_HINDI_VAD_THRESHOLD,
@@ -1595,8 +1602,8 @@ class FrontbitLinkNoAdbBot:
             segments, _ = model.transcribe(
                 norm_audio,
                 language="hi",
-                beam_size=1,  # Greedy search: ultra fast on CPU
-                best_of=1,
+                beam_size=max(1, int(getattr(self, "hindi_beam_size", 3))),
+                best_of=max(1, int(getattr(self, "hindi_beam_size", 3))),
                 max_new_tokens=token_budget,
                 vad_filter=True,  # Silero VAD filters out cable hiss and electrical noise
                 condition_on_previous_text=False,
@@ -2746,8 +2753,9 @@ class FrontbitLinkNoAdbBot:
             threshold=max(self.args.threshold, DIRECT_HINDI_VAD_THRESHOLD)
             if FORCE_LANGUAGE == "hi" else self.args.threshold,
             # Hindi hybrid mode starts a preview decode while speech is still
-            # active. Keep a conservative 300 ms endpoint and a 5 second
-            # safety cap; the final full-utterance decode remains the guard.
+            # active. Keep a 700 ms endpoint so normal pauses inside a Hindi
+            # sentence do not become separate caller questions, and allow
+            # long address/product questions to finish before STT runs.
             silence_frames=HINDI_ENDPOINT_FRAMES if FORCE_LANGUAGE == "hi" else 2,
             max_frames=HINDI_MAX_UTTERANCE_FRAMES if FORCE_LANGUAGE == "hi" else 30,
             enable_previews=True,

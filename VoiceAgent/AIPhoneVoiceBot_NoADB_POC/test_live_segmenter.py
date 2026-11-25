@@ -25,12 +25,13 @@ from unittest.mock import patch
 
 
 class LiveFaqSegmenterTests(unittest.TestCase):
-    def test_emits_preview_then_final_after_200ms_silence(self):
+    def test_emits_preview_then_final_after_700ms_silence(self):
         emitted = []
         started = []
         segmenter = LiveFaqSegmenter(
             lambda audio, at, utterance_id, final: emitted.append((len(audio), utterance_id, final)),
             lambda utterance_id, at: started.append(utterance_id),
+            silence_frames=7,
         )
         speech = np.full(1600, 0.05, dtype=np.float32)
         silence = np.zeros(1600, dtype=np.float32)
@@ -40,11 +41,32 @@ class LiveFaqSegmenterTests(unittest.TestCase):
         self.assertTrue(any(not final for _, _, final in emitted))
         self.assertFalse(any(final for _, _, final in emitted))
 
-        segmenter.feed(silence)
-        segmenter.feed(silence)
+        for _ in range(7):
+            segmenter.feed(silence)
         self.assertEqual(started, [1])
         self.assertTrue(emitted[-1][2])
         self.assertTrue(all(utterance_id == 1 for _, utterance_id, _ in emitted))
+
+    def test_keeps_a_short_pause_inside_one_question(self):
+        finals = []
+        segmenter = LiveFaqSegmenter(
+            lambda audio, at, utterance_id, final: finals.append((len(audio), utterance_id)) if final else None,
+            lambda *args: None,
+            silence_frames=7,
+        )
+        speech = np.full(1600, 0.05, dtype=np.float32)
+        silence = np.zeros(1600, dtype=np.float32)
+        for _ in range(5):
+            segmenter.feed(speech)
+        for _ in range(4):
+            segmenter.feed(silence)
+        for _ in range(5):
+            segmenter.feed(speech)
+        for _ in range(7):
+            segmenter.feed(silence)
+        self.assertEqual(len(finals), 1)
+        self.assertEqual(finals[0][1], 1)
+        self.assertGreaterEqual(finals[0][0] / 1600, 5 + 4 + 5)
 
     def test_question_ends_despite_steady_background_noise(self):
         # Call log 2026-10-30 19:46: background noise kept questions open to the cap.
