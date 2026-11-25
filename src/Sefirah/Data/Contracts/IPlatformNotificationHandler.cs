@@ -1,0 +1,70 @@
+using Sefirah.Data.Models;
+
+namespace Sefirah.Data.Contracts;
+
+/// <summary>
+/// Interface for platform-specific notification handlers
+/// </summary>
+public interface IPlatformNotificationHandler
+{
+    /// <summary>
+    /// Displays a notification from a remote device body
+    /// </summary>
+    /// <param name="message">The notification body from remote device</param>
+    /// <param name="deviceId">The ID of the device that sent the notification</param>
+    /// <returns>Task that completes when the notification is displayed</returns>
+    Task ShowRemoteNotification(NotificationInfo message, string deviceId);
+    
+    /// <summary>
+    /// Shows a clipboard sync notification. When <paramref name="actionLabel"/> and
+    /// <paramref name="actionData"/> are both set, adds a button to the notification.
+    /// </summary>
+    void ShowClipboardNotification(string title, string text, string? actionLabel = null, string? actionData = null);
+
+    /// <summary>
+    /// Shows a low battery notification for a paired device.
+    /// </summary>
+    Task ShowBatteryNotification(string title, string text, string tag);
+    
+    /// <summary>
+    /// Shows a terminal file transfer notification (completed or failed),
+    /// replacing any in-progress toast that shares the same <paramref name="transferId"/>.
+    /// </summary>
+    void ShowCompletedFileTransferNotification(string title, string subtitle, string transferId, string? filePath = null, string? folderPath = null);
+
+    void ShowFileTransferNotification(string notificationTitle, string progressTitle, string status, string transferId, uint notificationSequence, double progress);
+
+    Task ShowCallNotification(string title, string text, string tag, CallState callState, Uri? icon = null);
+
+    /// <summary>Incoming Android call actions when the Windows phone-line transport is unavailable.</summary>
+    Task ShowRemoteCallNotification(string title, string text, string tag, string deviceId, Uri? icon = null);
+
+    /// <summary>
+    /// incoming linked call with Accept / Decline actions.
+    /// </summary>
+    Task ShowCallNotification(string callId, string transportDeviceId, string title, string displayName, Uri? icon = null);
+
+    /// <summary>
+    /// Registers for platform-specific notification events
+    /// </summary>
+    Task RegisterForNotifications();
+    
+    /// <summary>
+    /// Removes a notification by its tag/key
+    /// </summary>
+    /// <param name="notificationKey">The key of the notification to remove</param>
+    Task RemoveNotificationByTag(string? notificationKey);
+    
+    /// <summary>
+    /// Removes all notifications for a specific group
+    /// </summary>
+    /// <param name="groupKey">The group identifier</param>
+    Task RemoveNotificationsByGroup(string? groupKey);
+
+    Task RemoveNotificationsByTagAndGroup(string? tag, string? groupKey);
+
+    /// <summary>
+    /// Clears all notifications
+    /// </summary>
+    Task ClearAllNotifications();
+} 

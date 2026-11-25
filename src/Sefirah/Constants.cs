@@ -1,0 +1,64 @@
+namespace Sefirah;
+public static class Constants
+{
+    public static class BatteryAlerts
+    {
+        public const int DefaultThreshold = 20;
+        public const int MinThreshold = 5;
+        public const int MaxThreshold = 50;
+    }
+
+    public static class Notification
+    {
+        public const string FileTransferGroup = "file-transfer";
+        public const string BatteryGroup = "battery";
+
+        public static string GetBatteryTag(string deviceId) => $"battery_{deviceId}";
+        public const string IncomingPhoneCallGroup = "incoming-phone-call";
+    }
+
+    public static class ToastNotificationType
+    {
+        public const string FileTransfer = "FileTransfer";
+        public const string RemoteNotification = "RemoteNotification";
+        public const string Clipboard = "Clipboard";
+        public const string Update = "Update";
+        public const string IncomingPhoneCall = "IncomingPhoneCall";
+        public const string RemotePhoneCall = "RemotePhoneCall";
+    }
+    public static class LocalSettings
+    {
+        public const string DateTimeFormat = "datetimeformat";
+
+        public const string PhoneFrameScrollTeachingTipShown = "PhoneFrameScrollTeachingTipShown";
+        public const string MainNavigationSelection = "MainNavigationSelection";
+        public const string DatabaseFileName = "sefirah.db";
+        public static readonly string ConnectionString = $"Filename={Path.Combine(Utils.LocalAppPaths.GetLocalFolderPath(), DatabaseFileName)}";
+    }
+
+    public static class ExternalUrl
+    {
+        public const string ReleasesUrl = @"https://github.com/shrimqy/Sefirah/releases/latest";
+        public const string AndroidGitHubRepoUrl = @"https://github.com/shrimqy/Sefirah-Android";
+        public const string GitHubRepoUrl = @"https://github.com/shrimqy/Sefirah";
+        public const string DiscordUrl = @"https://discord.gg/MuvMqv4MES";
+        public const string FeatureRequestUrl = @"https://github.com/shrimqy/Sefirah/issues/new?template=request_feature.yml";
+        public const string BugReportUrl = @"https://github.com/shrimqy/Sefirah/issues/new?template=report_issue.yml";
+        public const string PrivacyPolicyUrl = @"https://github.com/shrimqy/Sefirah/blob/master/.github/Privacy.md";
+        public const string LicenseUrl = @"https://github.com/shrimqy/Sefirah/blob/master/LICENSE";
+        public const string DonateUrl = @"https://linktr.ee/shrimqy";
+    }
+
+    public static class UserEnvironmentPaths
+    {
+        public static readonly string DownloadsPath = GetDownloadsPath();
+        public static readonly string UserProfilePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        public static readonly string DefaultRemoteDevicePath = Path.Combine(UserProfilePath, "RemoteDevices");
+        private static string GetDownloadsPath()
+        {
+            string homePath = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return Path.Combine(homePath, "Downloads");
+            
+        }
+    }
+}

@@ -1,0 +1,452 @@
+﻿<Page
+    x:Class="Sefirah.Views.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Sefirah.Converters"
+    xmlns:wctconverters="using:CommunityToolkit.WinUI.Converters"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:helpers="using:Sefirah.Helpers"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:models="using:Sefirah.Data.Models"
+    xmlns:not_win="http://uno.ui/not_win"
+    xmlns:userControls="using:Sefirah.UserControls"
+    xmlns:utu="using:Uno.Toolkit.UI"
+    xmlns:win="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    Background="{ThemeResource App.PageBackgroundBrush}"
+    mc:Ignorable="d not_win"
+    x:Name="PageRoot">
+
+    <Page.Resources>
+        <wctconverters:BoolToObjectConverter x:Key="BoolToConnectionButtonTextConverter"
+            FalseValue="{helpers:ResourceString Name=Disconnected/Text}"
+            TrueValue="{helpers:ResourceString Name=Connected/Text}" />
+        
+        <wctconverters:BoolToObjectConverter x:Key="BoolToDndButtonStyleConverter"
+            FalseValue="{StaticResource DefaultButtonStyle}"
+            TrueValue="{StaticResource AccentButtonStyle}" />
+
+        <converters:CountToBooleanConverter x:Key="CountToBooleanConverter" />
+        <converters:CountToBooleanConverter x:Key="InverseCountToBooleanConverter" Inverse="True" />
+        <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
+
+        <wctconverters:EmptyObjectToObjectConverter x:Key="EmptyObjectToOpacityConverter" EmptyValue="1.0" NotEmptyValue="0.0" />
+        <converters:RingerModeToIconConverter x:Key="RingerModeToIconConverter" />
+        <converters:BatteryStatusToIconConverter x:Key="BatteryStatusToIconConverter" />
+        <converters:BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter" />
+        <converters:BooleanToVisibilityConverter x:Key="InverseBooleanToVisibilityConverter" Inverse="True" />
+        <converters:EmptyObjectToVisibilityConverter x:Key="EmptyObjectToVisibilityConverter" />
+        <converters:EmptyObjectToVisibilityConverter x:Key="InverseEmptyObjectToVisibilityConverter" Inverse="True" />
+    </Page.Resources>
+
+    <Grid
+        AllowDrop="True"
+        DragOver="Grid_DragOver"
+        Drop="Page_Drop">
+        <NavigationView
+            x:Name="SideBar"
+            CompactPaneLength="48"
+            IsBackButtonVisible="Collapsed"
+            IsPaneToggleButtonVisible="False"
+            IsSettingsVisible="False"
+            OpenPaneLength="360"
+            PaneDisplayMode="Left"
+            LayoutUpdated="SideBar_LayoutUpdated"
+            SizeChanged="SideBar_SizeChanged"
+            PaneOpening="SideBar_PaneOpening"
+            PaneClosing="SideBar_PaneClosing"
+            PaneClosed="SideBar_PaneClosed">
+            <NavigationView.Resources>
+                <Thickness x:Key="NavigationViewContentGridBorderThickness">0</Thickness>
+                <CornerRadius x:Key="NavigationViewContentGridCornerRadius">0</CornerRadius>
+                <SolidColorBrush x:Key="NavigationViewContentBackground" Color="Transparent" />
+                <SolidColorBrush x:Key="NavigationViewExpandedPaneBackground" Color="Transparent" />
+            </NavigationView.Resources>
+
+            <NavigationView.PaneCustomContent>
+                <Grid x:Name="PaneCustomRoot" win:Padding="0,32,0,0" VerticalAlignment="Stretch">
+                    <Grid
+                        x:Name="CompactPaneContent"
+                        Padding="0,4,0,8"
+                        Visibility="Collapsed">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <Button
+                            Grid.Row="0"
+                            Width="40"
+                            Height="36"
+                            Margin="0,0,0,4"
+                            Padding="0"
+                            HorizontalAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Click="OpenSideBar_Click"
+                            AutomationProperties.Name="{helpers:ResourceString Name=OpenPane}"
+                            ToolTipService.ToolTip="{helpers:ResourceString Name=OpenPane}">
+                            <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE76C;" />
+                        </Button>
+
+                        <Button
+                            Grid.Row="1"
+                            Width="36"
+                            Height="52"
+                            Margin="0,0,0,8"
+                            Padding="4"
+                            HorizontalAlignment="Center"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            CornerRadius="6"
+                            AutomationProperties.Name="{helpers:ResourceString Name=StartScreenMirroring}"
+                            ToolTipService.ToolTip="{helpers:ResourceString Name=StartScreenMirroring}"
+                            utu:CommandExtensions.Command="{x:Bind ViewModel.StartScrcpyCommand}"
+                            Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}">
+                            <Grid>
+                                <Viewbox Width="24" Height="44">
+                                    <Grid Width="54" Height="100" CornerRadius="8">
+                                        <Rectangle
+                                            Opacity="0.5"
+                                            RadiusX="4"
+                                            RadiusY="4"
+                                            Stroke="Black"
+                                            StrokeThickness="2">
+                                            <Rectangle.Fill>
+                                                <SolidColorBrush Opacity="0.1" Color="{ThemeResource SystemBaseLowColor}" />
+                                            </Rectangle.Fill>
+                                        </Rectangle>
+                                        <Rectangle
+                                            Margin="2"
+                                            RadiusX="4"
+                                            RadiusY="4"
+                                            Stroke="Black"
+                                            StrokeThickness="1" />
+                                        <Border Margin="3" CornerRadius="4">
+                                            <Border.Background>
+                                                <LinearGradientBrush Opacity="{x:Bind ViewModel.Device.Wallpaper, Converter={StaticResource EmptyObjectToOpacityConverter}, Mode=OneWay}" StartPoint="0,0" EndPoint="0,1">
+                                                    <GradientStop Offset="0" Color="#FF0070FF" />
+                                                    <GradientStop Offset="1" Color="#FF2E90FF" />
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <Image
+                                                Source="{x:Bind ViewModel.Device.Wallpaper, Mode=OneWay}"
+                                                Stretch="UniformToFill"
+                                                Visibility="{x:Bind ViewModel.Device.Wallpaper, Mode=OneWay, Converter={StaticResource EmptyObjectToVisibilityConverter}}" />
+                                        </Border>
+                                    </Grid>
+                                </Viewbox>
+                                <ProgressRing
+                                    Width="16"
+                                    Height="16"
+                                    IsActive="{x:Bind ViewModel.LoadingScrcpy, Mode=OneWay}"
+                                    Visibility="{x:Bind ViewModel.LoadingScrcpy, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}" />
+                            </Grid>
+                        </Button>
+
+                        <Grid
+                            Grid.Row="2"
+                            Margin="0,0,0,8"
+                            HorizontalAlignment="Center"
+                            Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}">
+                            <ContentPresenter
+                                Content="{x:Bind ViewModel.Device.LastPlayingSession, Mode=OneWay}"
+                                Visibility="{x:Bind ViewModel.Device.RemotePlaybackSessions.Count, Mode=OneWay, Converter={StaticResource CountToVisibilityConverter}}">
+                                <ContentPresenter.ContentTemplate>
+                                <DataTemplate x:DataType="models:MediaSession">
+                                    <Button
+                                        Width="36"
+                                        Height="36"
+                                        Padding="0"
+                                        HorizontalAlignment="Center"
+                                        Background="Transparent"
+                                        BorderThickness="0"
+                                        CornerRadius="6"
+                                        Click="CompactPlayPause_Click"
+                                        Tag="{x:Bind}"
+                                        AutomationProperties.Name="{helpers:ResourceString Name=PlayOrPause}"
+                                        ToolTipService.ToolTip="{x:Bind TrackTitle, Mode=OneWay}">
+                                        <Grid Width="36" Height="36">
+                                            <Image
+                                                Stretch="UniformToFill"
+                                                Source="{x:Bind Thumbnail, Mode=OneWay}"
+                                                Visibility="{x:Bind Thumbnail, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}" />
+                                            <Border
+                                                Background="#66000000"
+                                                Visibility="{x:Bind Thumbnail, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}" />
+                                            <FontIcon
+                                                FontFamily="{ThemeResource SymbolThemeFontFamily}"
+                                                FontSize="16"
+                                                Glyph="{x:Bind PlayPauseGlyph, Mode=OneWay}" />
+                                        </Grid>
+                                    </Button>
+                                </DataTemplate>
+                            </ContentPresenter.ContentTemplate>
+                            </ContentPresenter>
+                        </Grid>
+
+                        <ScrollViewer
+                            Grid.Row="3"
+                            HorizontalScrollBarVisibility="Disabled"
+                            VerticalScrollBarVisibility="Auto"
+                            Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}">
+                            <ItemsRepeater ItemsSource="{x:Bind ViewModel.Notifications, Mode=OneWay}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Orientation="Vertical" Spacing="4" />
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="models:Notification">
+                                        <Button
+                                            Width="36"
+                                            Height="36"
+                                            Padding="4"
+                                            HorizontalAlignment="Center"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Click="OpenSideBar_Click"
+                                            CornerRadius="6"
+                                            ToolTipService.ToolTip="{x:Bind AppName}">
+                                            <Grid>
+                                                <Image
+                                                    Width="28"
+                                                    Height="28"
+                                                    Source="{x:Bind helpers:ImageHelper.ToDisplayIcon(LargeIcon, DeviceId, AppPackage), Mode=OneWay}"
+                                                    Visibility="{x:Bind HasDisplayIcon, Converter={StaticResource BooleanToVisibilityConverter}, Mode=OneWay}" />
+                                                <FontIcon
+                                                    FontSize="14"
+                                                    Glyph="&#xE91C;"
+                                                    Visibility="{x:Bind HasDisplayIcon, Converter={StaticResource InverseBooleanToVisibilityConverter}, Mode=OneWay}" />
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </ScrollViewer>
+                    </Grid>
+
+                    <Grid
+                        x:Name="ExpandedPaneContent"
+                        Margin="12,0,12,12"
+                        Padding="0"
+                        VerticalAlignment="Stretch"
+                        RowSpacing="8">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+
+                    <userControls:DeviceControlCenter
+                        x:Name="ConnectedDevicePane"
+                        Grid.Row="0"
+                        PaneFlyoutPlacement="Bottom"
+                        Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}" />
+
+                    <StackPanel
+                        Grid.Row="1"
+                        Background="Transparent"
+                        Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}">
+
+                        <Rectangle Height="1" Fill="{ThemeResource ControlStrokeColorDefaultBrush}" />
+
+                    <!-- Media sessions -->
+                        <StackPanel
+                            x:Name="MediaSession"
+                            Visibility="{x:Bind ViewModel.Device.DeviceSettings.MediaSessionReceive, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Border
+                                Margin="0,8,0,0"
+                                Padding="12"
+                                Background="{ThemeResource CardBackgroundFillColorDefault}"
+                                BorderBrush="{ThemeResource CardStrokeColorDefault}"
+                                BorderThickness="1"
+                                CornerRadius="8"
+                                Visibility="{x:Bind ViewModel.Device.RemotePlaybackSessions.Count, Mode=OneWay, Converter={StaticResource CountToVisibilityConverter}}">
+                                <userControls:MediaSessionsControl />
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <userControls:NotificationsControl
+                        Grid.Row="2"
+                        Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}" />
+
+                <!--  No Device Connected View  -->
+                    <Grid
+                        Grid.Row="0"
+                        Grid.RowSpan="3"
+                        Margin="0,20,0,0"
+                        Visibility="{x:Bind ViewModel.Device, Converter={StaticResource InverseEmptyObjectToVisibilityConverter}, Mode=OneWay}">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <TextBlock
+                            Grid.Row="0"
+                            Margin="0,0,0,12"
+                            FontSize="18"
+                            FontWeight="SemiBold"
+                            Text="{helpers:ResourceString Name=AvailableDevices/Title}" />
+
+                        <!--  Available Devices  -->
+                        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                            <ItemsRepeater ItemsSource="{x:Bind DevicesViewModel.DiscoveredDevices, Mode=OneWay}">
+                                <ItemsRepeater.Layout>
+                                    <StackLayout Orientation="Vertical" Spacing="8" />
+                                </ItemsRepeater.Layout>
+                                <ItemsRepeater.ItemTemplate>
+                                    <DataTemplate x:DataType="models:DiscoveredDevice">
+                                        <Button
+                                            Margin="0,0,0,4"
+                                            Padding="12"
+                                            HorizontalAlignment="Stretch"
+                                            HorizontalContentAlignment="Left"
+                                            Click="DiscoveredDeviceButton_Click"
+                                            Tag="{x:Bind}">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <FontIcon
+                                                    Grid.Column="0"
+                                                    Margin="0,0,12,0"
+                                                    VerticalAlignment="Center"
+                                                    Glyph="&#xE8EA;" />
+                                                <StackPanel Grid.Column="1" Spacing="4">
+                                                    <TextBlock FontWeight="SemiBold" Text="{x:Bind Name}" />
+                                                    <TextBlock
+                                                        FontSize="12"
+                                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                                        Text="{x:Bind VerificationKey}" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Button>
+                                    </DataTemplate>
+                                </ItemsRepeater.ItemTemplate>
+                            </ItemsRepeater>
+                        </ScrollViewer>
+                    </Grid>
+                    <Button
+                        x:Name="CollapsePaneButton"
+                        Grid.Row="0"
+                        Width="40"
+                        Height="32"
+                        Padding="0"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Top"
+                        Background="Transparent"
+                        BorderThickness="0"
+                        Click="CloseSideBar_Click"
+                        Visibility="Collapsed"
+                        AutomationProperties.Name="{helpers:ResourceString Name=ClosePane}"
+                        ToolTipService.ToolTip="{helpers:ResourceString Name=ClosePane}">
+                        <FontIcon FontFamily="{ThemeResource SymbolThemeFontFamily}" Glyph="&#xE76B;" />
+                    </Button>
+                    </Grid>
+                </Grid>
+            </NavigationView.PaneCustomContent>
+
+            <Grid win:Margin="0,32,0,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <NavigationView
+                    x:Name="MainNavigationView"
+                    Grid.Row="0"
+                    BorderBrush="Transparent"
+                    IsBackButtonVisible="Collapsed"
+                    IsPaneToggleButtonVisible="False"
+                    IsSettingsVisible="True"
+                    Loaded="MainNavigationView_Loaded"
+                    PaneDisplayMode="Top"
+                    SelectionChanged="NavigationView_SelectionChanged">
+                    <NavigationView.Resources>
+                        <SolidColorBrush x:Key="NavigationViewContentGridBorderBrush" Color="Transparent" />
+
+                        <Style TargetType="NavigationViewItem" x:Key="CompactFooterNavigationViewItemStyle">
+                            <Setter Property="Height" Value="40" />
+                        </Style>
+                    </NavigationView.Resources>
+
+                    <NavigationView.MenuItems>
+                        <NavigationViewItem
+                            x:Name="CallsNavigationItem"
+                            Content="{helpers:ResourceString Name=Calls}"
+                            Tag="Calls"
+                            Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}">
+                            <NavigationViewItem.Icon>
+                                <FontIcon Glyph="&#xE717;" />
+                            </NavigationViewItem.Icon>
+                        </NavigationViewItem>
+                        <NavigationViewItem
+                            x:Name="CallAgentNavigationItem"
+                            Content="Call Agent"
+                            Tag="CallAgent"
+                            Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}">
+                            <NavigationViewItem.Icon>
+                                <FontIcon Glyph="&#xE8A7;" />
+                            </NavigationViewItem.Icon>
+                        </NavigationViewItem>
+                        <NavigationViewItem
+                            x:Name="MessagesNavigationItem"
+                            Content="{helpers:ResourceString Name=Messages}"
+                            Tag="Messages"
+                            Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}">
+                            <NavigationViewItem.Icon>
+                                <FontIcon Glyph="&#xE8BD;" />
+                            </NavigationViewItem.Icon>
+                        </NavigationViewItem>
+                        <NavigationViewItem
+                            x:Name="AppsNavigationItem"
+                            Content="{helpers:ResourceString Name=Apps}"
+                            Tag="Apps"
+                            Visibility="{x:Bind ViewModel.Device, Converter={StaticResource EmptyObjectToVisibilityConverter}, Mode=OneWay}">
+                            <NavigationViewItem.Icon>
+                                <FontIcon Glyph="&#xED35;" />
+                            </NavigationViewItem.Icon>
+                        </NavigationViewItem>
+                    </NavigationView.MenuItems>
+
+                    <NavigationView.FooterMenuItems>
+                        <NavigationViewItem
+                            Style="{StaticResource CompactFooterNavigationViewItemStyle}"
+                            SelectsOnInvoked="False"
+                            utu:CommandExtensions.Command="{x:Bind ViewModel.UpdateCommand}"
+                            AutomationProperties.Name="{helpers:ResourceString Name=UpdateNotification/Action}"
+                            ToolTipService.ToolTip="{helpers:ResourceString Name=UpdateNotification/Action}"
+                            Visibility="{x:Bind ViewModel.IsUpdateAvailableOrUpdating, Mode=OneWay, Converter={StaticResource BooleanToVisibilityConverter}}">
+                            <Grid>
+                                <FontIcon
+                                    FontSize="16"
+                                    Foreground="{ThemeResource AccentFillColorDefaultBrush}"
+                                    Glyph="&#xEDAB;"
+                                    Visibility="{x:Bind ViewModel.IsUpdating, Mode=OneWay, Converter={StaticResource InverseBooleanToVisibilityConverter}}" />
+                                <ProgressRing
+                                    x:Name="loadingicon"
+                                    Width="16"
+                                    Height="16"
+                                    IsIndeterminate="True"
+                                    x:Load="{x:Bind ViewModel.IsUpdating, Mode=OneWay}" />
+                            </Grid>
+                        </NavigationViewItem>
+                    </NavigationView.FooterMenuItems>
+                </NavigationView>
+
+                <Frame
+                    x:Name="ContentFrame"
+                    Grid.Row="1"
+                    Background="{ThemeResource LayerFillColorDefault}"
+                    BorderBrush="{StaticResource CardStrokeColorDefault}"
+                    BorderThickness="1,1,0,0"
+                    CornerRadius="10,0,0,0" />
+            </Grid>
+        </NavigationView>
+        <userControls:TitleBar
+            HorizontalAlignment="Left"
+            VerticalAlignment="Top"
+            not_win:Visibility="Collapsed" />
+    </Grid>
+</Page>

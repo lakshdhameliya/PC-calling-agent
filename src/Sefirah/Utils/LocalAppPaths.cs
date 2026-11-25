@@ -1,0 +1,140 @@
+namespace Sefirah.Utils;
+
+public static class LocalAppPaths
+{
+    public const string DevicesFolderName = "Devices";
+    public const string DeviceSettingsFileName = "settings.json";
+    public const string DeviceIconsFolderName = "Icons";
+    public const string ClipboardFolderName = "Clipboard";
+    public const string AttachmentsFolderName = "Attachments";
+    public const string UserSettingsFileName = "user_settings.json";
+
+    private static readonly TimeSpan TemporaryFileMaxAge = TimeSpan.FromHours(24);
+
+    private static string LocalFolder => GetLocalFolderPath();
+    private static string TemporaryFolder => GetTemporaryFolderPath();
+
+    public static string GetLocalFolderPath()
+    {
+        try
+        {
+            return ApplicationData.Current.LocalFolder.Path;
+        }
+        catch (Exception)
+        {
+            var path = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Frontbit Link");
+            Directory.CreateDirectory(path);
+            return path;
+        }
+    }
+
+    public static string GetTemporaryFolderPath()
+    {
+        try
+        {
+            return ApplicationData.Current.TemporaryFolder.Path;
+        }
+        catch (Exception)
+        {
+            var path = Path.Combine(Path.GetTempPath(), "Frontbit Link");
+            Directory.CreateDirectory(path);
+            return path;
+        }
+    }
+
+    public static string GetUserSettingsPath() =>
+        Path.Combine(LocalFolder, UserSettingsFileName);
+
+    public static string GetDeviceFolder(string deviceId) =>
+        Path.Combine(LocalFolder, DevicesFolderName, deviceId);
+
+    public static string GetDeviceSettingsPath(string deviceId) =>
+        Path.Combine(GetDeviceFolder(deviceId), DeviceSettingsFileName);
+
+    public static string GetDeviceIconsFolder(string deviceId) =>
+        Path.Combine(GetDeviceFolder(deviceId), DeviceIconsFolderName);
+
+    public static string GetClipboardFolder()
+    {
+        var path = Path.Combine(TemporaryFolder, ClipboardFolderName);
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    public static string GetAttachmentsFolder(string deviceId)
+    {
+        var path = Path.Combine(TemporaryFolder, AttachmentsFolderName, deviceId);
+        Directory.CreateDirectory(path);
+        return path;
+    }
+
+    public static string CreateClipboardFilePath(string? extension)
+    {
+        var ext = string.IsNullOrWhiteSpace(extension)
+            ? ".png"
+            : extension[0] == '.' ? extension : $".{extension}";
+        return Path.Combine(GetClipboardFolder(), $"clipboard_{Guid.NewGuid():N}{ext}");
+    }
+
+    public static void PruneTemporaryFolder()
+    {
+        try
+        {
+            var root = TemporaryFolder;
+            if (!Directory.Exists(root)) return;
+
+            var cutoff = DateTime.UtcNow - TemporaryFileMaxAge;
+            foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(file) < cutoff)
+                        File.Delete(file);
+                }
+                catch
+                {
+                }
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    public static string GetAppIconFilePath(string deviceId, string packageName) =>
+        Path.Combine(GetDeviceIconsFolder(deviceId), $"{packageName}.png");
+
+    public static string GetAppIconPath(string deviceId, string packageName) =>
+        $"ms-appdata:///local/{DevicesFolderName}/{deviceId}/{DeviceIconsFolderName}/{packageName}.png";
+
+    public static void EnsureDeviceFolder(string deviceId) =>
+        Directory.CreateDirectory(GetDeviceFolder(deviceId));
+
+    public static void DeleteDeviceIcons(string deviceId)
+    {
+        try
+        {
+            var iconsFolder = GetDeviceIconsFolder(deviceId);
+            if (Directory.Exists(iconsFolder))
+                Directory.Delete(iconsFolder, true);
+        }
+        catch (Exception)
+        {
+        }
+    }
+
+    public static void DeleteDeviceData(string deviceId)
+    {
+        try
+        {
+            var deviceFolder = GetDeviceFolder(deviceId);
+            if (Directory.Exists(deviceFolder))
+                Directory.Delete(deviceFolder, true);
+        }
+        catch (Exception)
+        {
+        }
+    }
+}

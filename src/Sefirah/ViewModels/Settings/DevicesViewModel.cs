@@ -1,0 +1,126 @@
+using CommunityToolkit.WinUI;
+using Microsoft.UI.Dispatching;
+using Sefirah.Data.AppDatabase.Repository;
+using Sefirah.Data.Models;
+
+namespace Sefirah.ViewModels.Settings;
+
+public partial class DevicesViewModel : ObservableObject
+{
+    #region Services
+    private readonly DispatcherQueue Dispatcher;
+    private ISessionManager SessionManager { get; } = Ioc.Default.GetRequiredService<ISessionManager>();
+    private IDeviceManager DeviceManager { get; } = Ioc.Default.GetRequiredService<IDeviceManager>();
+    private ISftpFeature SftpFeature { get; } = Ioc.Default.GetRequiredService<ISftpFeature>();
+    private RemoteAppRepository RemoteAppRepository { get; } = Ioc.Default.GetRequiredService<RemoteAppRepository>();
+    private ContactRepository ContactRepository { get; } = Ioc.Default.GetRequiredService<ContactRepository>();
+    private SmsRepository SmsRepository { get; } = Ioc.Default.GetRequiredService<SmsRepository>();
+    private CallLogRepository CallLogRepository { get; } = Ioc.Default.GetRequiredService<CallLogRepository>();
+    private NotificationRepository NotificationRepository { get; } = Ioc.Default.GetRequiredService<NotificationRepository>();
+    #endregion
+    
+    public ObservableCollection<PairedDevice> PairedDevices => DeviceManager.PairedDevices;
+    public ObservableCollection<DiscoveredDevice> DiscoveredDevices => DeviceManager.DiscoveredDevices;
+
+    public DevicesViewModel()
+    {
+        Dispatcher = DispatcherQueue.GetForCurrentThread();
+        DeviceManager.ActiveDeviceChanged += OnActiveDeviceChanged;
+        UpdateActiveDeviceState(DeviceManager.ActiveDevice);
+    }
+
+    private void OnActiveDeviceChanged(object? sender, PairedDevice? activeDevice)
+    {
+        UpdateActiveDeviceState(activeDevice);
+    }
+
+    private void UpdateActiveDeviceState(PairedDevice? activeDevice)
+    {
+        foreach (var pairedDevice in PairedDevices)
+        {
+            pairedDevice.IsActiveDevice = pairedDevice == activeDevice;
+        }
+    }
+
+    [RelayCommand]
+    public void OpenDeviceSettings(PairedDevice? device)
+    {
+        if (device is null) return;
+        App.OpenDeviceSettingsWindow(device);
+    }
+
+    [RelayCommand]
+    public async Task RemoveDevice(PairedDevice? device)
+    {
+        if (device is null)
+        {
+            return;
+        }
+        var dialog = new ContentDialog
+        {
+            Title = "RemoveDeviceDialogTitle".GetLocalizedResource(),
+            Content = string.Format("RemoveDeviceDialogSubtitle".GetLocalizedResource(), device.Name),
+            PrimaryButtonText = "Remove".GetLocalizedResource(),
+            CloseButtonText = "Cancel".GetLocalizedResource(),
+            DefaultButton = ContentDialogButton.Close,
+            XamlRoot = App.MainWindow.Content!.XamlRoot
+        };
+
+        var result = await dialog.ShowAsync();
+        if (result is not ContentDialogResult.Primary)
+            return;
+
+        try
+        {
+            var deviceId = device.Id;
+
+            // First disconnect if this is the currently connected device
+            if (device.IsConnected)
+            {
+                try
+                {
+                    SessionManager.DisconnectDevice(device);
+                }
+                catch { }
+            }
+
+            App.CloseDeviceSettingsWindow(deviceId);
+            await DeviceManager.RemoveDevice(device);
+
+            SftpFeature.Remove(deviceId);
+
+            await Task.Run(() =>
+            {
+                try { RemoteAppRepository.RemoveAllAppsForDevice(deviceId); } catch { }
+                try { SmsRepository.DeleteAllDataForDevice(deviceId); } catch { }
+                try { ContactRepository.DeleteAllContactsForDevice(deviceId); } catch { }
+                try { CallLogRepository.DeleteAllCallLogsForDevice(deviceId); } catch { }
+                try { NotificationRepository.RemoveNotificationsForDevice(deviceId); } catch { }
+            });
+        }
+        catch (Exception ex)
+        {
+            await Dispatcher.EnqueueAsync(() => DeviceManager.PairedDevices.Remove(device));
+            var errorDialog = new ContentDialog
+            {
+                Title = "Error",
+                Content = $"Failed to remove device: {ex.Message}",
+                CloseButtonText = "OK",
+                XamlRoot = App.MainWindow.Content!.XamlRoot
+            };
+            await errorDialog.ShowAsync();
+        }
+    }
+
+    [RelayCommand]
+    public void SelectDevice(PairedDevice? device)
+    {
+        if (device is null || DeviceManager.ActiveDevice == device)
+        {
+            return;
+        }
+
+        DeviceManager.ActiveDevice = device;
+        UpdateActiveDeviceState(device);
+    }
+}

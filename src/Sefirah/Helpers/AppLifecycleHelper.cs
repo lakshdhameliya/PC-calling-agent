@@ -1,0 +1,196 @@
+using Sefirah.Data.AppDatabase;
+using Sefirah.Data.AppDatabase.Repository;
+using Sefirah.Models;
+#if WINDOWS
+using Sefirah.Platforms.Windows;
+#else
+using Sefirah.Platforms.Desktop;
+#endif
+using Sefirah.Services;
+using Sefirah.Services.Transfer;
+using Sefirah.Services.Settings;
+using Sefirah.Services.Socket;
+using Sefirah.Utils;
+using Sefirah.ViewModels;
+using Sefirah.ViewModels.Settings;
+using Serilog;
+using ILogger = Microsoft.Extensions.Logging.ILogger;
+
+namespace Sefirah.Helpers;
+
+/// <summary>
+/// Provides static helper to manage app lifecycle.
+/// </summary>
+public static class AppLifecycleHelper
+{
+    /// <summary>
+    /// Gets application package version.
+    /// </summary>
+    public static Version AppVersion { get; } = GetAppVersion();
+
+    private static Version GetAppVersion()
+    {
+        try
+        {
+            var version = Package.Current.Id.Version;
+            return new Version(version.Major, version.Minor, version.Build, version.Revision);
+        }
+        catch (InvalidOperationException)
+        {
+            return typeof(AppLifecycleHelper).Assembly.GetName().Version ?? new Version(0, 0, 0, 0);
+        }
+    }
+
+    public static async Task InitializeAppComponentsAsync()
+    {
+        var discoveryService = Ioc.Default.GetRequiredService<IDiscoveryService>();
+        var networkService = Ioc.Default.GetRequiredService<INetworkService>();
+        var deviceManager = Ioc.Default.GetRequiredService<IDeviceManager>();
+        var adbService = Ioc.Default.GetRequiredService<IAdbService>();
+        var updateService = Ioc.Default.GetRequiredService<IUpdateService>();
+        var phoneLineService = Ioc.Default.GetRequiredService<IPhoneLineService>();
+#if WINDOWS
+        var notificationHandler = Ioc.Default.GetRequiredService<IPlatformNotificationHandler>();
+        await notificationHandler.RegisterForNotifications();
+#endif
+
+        await deviceManager.Initialize();
+
+        await Task.WhenAll(Ioc.Default.GetServices<IFeature>().Select(feature => feature.InitializeAsync()));
+
+        await networkService.StartServerAsync();
+        await discoveryService.StartDiscoveryAsync();
+
+        _ = Task.WhenAll(
+            adbService.StartAsync(),
+            updateService.CheckForUpdatesAsync(),
+            phoneLineService.InitializeAsync(),
+            Task.Run(LocalAppPaths.PruneTemporaryFolder)
+        );
+    }
+
+    public static IApplicationBuilder ConfigureApp(this App app, LaunchActivatedEventArgs args)
+    {
+        return app.CreateBuilder(args)
+            .Configure(host => host
+#if DEBUG
+                // Switch to Development environment when running in DEBUG
+                .UseEnvironment(Environments.Development)
+#endif
+                .UseLogging(configure: (context, logBuilder) =>
+                {
+                    // Configure log levels for different categories of logging
+                    logBuilder
+                        .SetMinimumLevel(
+                            context.HostingEnvironment.IsDevelopment() ?
+                                LogLevel.Debug :
+                                LogLevel.Warning)
+
+                        // Default filters for core Uno Platform namespaces
+                        .CoreLogLevel(LogLevel.Error);
+
+                }, enableUnoLogging: false)
+                .UseSerilog(
+                    consoleLoggingEnabled: true,
+                    fileLoggingEnabled: true,
+                    configureLogger: config =>
+                    {
+                        config.WriteTo.File(
+                            Path.Combine(LocalAppPaths.GetLocalFolderPath(), "Logs", "Log_.log"),
+                            rollingInterval: RollingInterval.Day,
+                            retainedFileCountLimit: 7
+                        );
+                    }
+                )
+                .UseConfiguration(configure: configBuilder =>
+                    configBuilder
+                        .EmbeddedSource<App>()
+                        .Section<AppConfig>()
+                )
+                .UseLocalization()
+                .ConfigureServices((context, services) => services
+
+                .AddSingleton<ILogger>(sp => sp.GetRequiredService<ILogger<App>>())
+
+                // Settings Services
+                .AddSingleton<IUserSettingsService, UserSettingsService>()
+                .AddSingleton<IGeneralSettingsService, GeneralSettingsService>(sp => new GeneralSettingsService(((UserSettingsService)sp.GetRequiredService<IUserSettingsService>()).GetSharingContext()))
+                .AddSingleton<IAppThemeModeService, AppThemeModeService>()
+
+                // Database and Repositories
+                .AddSingleton<DatabaseContext>()
+                .AddSingleton<DeviceRepository>()
+                .AddSingleton<RemoteAppRepository>()
+                .AddSingleton<ContactRepository>()
+                .AddSingleton<SmsRepository>()
+                .AddSingleton<CallLogRepository>()
+                .AddSingleton<NotificationRepository>()
+
+                // Platform-specific services
+                .AddPlatformServices()
+                // Services
+                .AddSingleton<IDeviceManager, DeviceManager>()
+                .AddSingleton(sp => (ITcpServerProvider)sp.GetRequiredService<INetworkService>())
+                .AddSingleton(sp => (ISessionManager)sp.GetRequiredService<INetworkService>())
+                .AddSingleton<IMdnsService, MdnsService>()
+                .AddSingleton<IDiscoveryService, DiscoveryService>()
+                .AddSingleton<INetworkService, NetworkService>()
+
+                .AddFeature<INotificationFeature, NotificationFeature>()
+                .AddFeature<IBatteryAlertFeature, BatteryAlertFeature>()
+                .AddFeature<IClipboardFeature, ClipboardFeature>()
+                .AddFeature<IRemoteMediaFeature, RemoteMediaFeature>()
+                .AddFeature<IPlaySoundFeature, PlaySoundFeature>()
+                .AddFeature<IActionFeature, ActionFeature>()
+                .AddSingleton<IFileTransferService, FileTransferService>()
+                .AddFeature<ISmsFeature, SmsFeature>()
+                .AddFeature<ICallFeature, CallFeature>()
+
+                .AddSingleton<IMessageHandler, MessageHandler>()
+                .AddSingleton<Lazy<IMessageHandler>>(sp => new Lazy<IMessageHandler>(() => sp.GetRequiredService<IMessageHandler>()))
+                .AddSingleton<IAdbService, AdbService>()
+                .AddSingleton<IScreenMirrorService, ScreenMirrorService>()
+
+                // ViewModels
+                .AddSingleton<MainPageViewModel>()
+                .AddSingleton<DevicesViewModel>()
+                .AddSingleton<AppsViewModel>()
+                .AddSingleton<MessagesViewModel>()
+                .AddSingleton<CallsPageViewModel>()
+                )
+            );
+    }
+
+    /// <summary>
+    /// Shows exception on the Debug Output.
+    /// </summary>
+    public static void HandleAppUnhandledException(Exception? ex)
+    {
+        try
+        {
+            Ioc.Default.GetService<ILogger>()?.LogCritical("Unhandled exception {ex}", ex);
+        }
+        catch (InvalidOperationException)
+        {
+            Debug.WriteLine($"Unhandled exception: {ex}");
+        }
+    }
+
+    public static async Task HandleStartupTaskAsync(bool enable)
+    {
+#if WINDOWS
+        var startupTask = await StartupTask.GetAsync("8B5D3E3F-9B69-4E8A-A9F7-BFCA793B9AF0");
+
+        if (enable)
+        {
+            if (startupTask.State is StartupTaskState.Disabled)
+                await startupTask.RequestEnableAsync();
+        }
+        else
+        {
+            if (startupTask.State is StartupTaskState.Enabled)
+                startupTask.Disable();
+        }
+#endif
+    }
+}

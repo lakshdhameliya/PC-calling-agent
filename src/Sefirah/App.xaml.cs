@@ -1,0 +1,437 @@
+using CommunityToolkit.WinUI;
+using Microsoft.UI.Xaml.Media.Animation;
+using Microsoft.Windows.AppLifecycle;
+using Sefirah.Helpers;
+using Sefirah.Views;
+using Sefirah.Views.Onboarding;
+using Windows.ApplicationModel.Activation;
+using LaunchActivatedEventArgs = Microsoft.UI.Xaml.LaunchActivatedEventArgs;
+using System.Runtime.InteropServices;
+using Microsoft.UI.Windowing;
+using WinRT.Interop;
+using Sefirah.Data.Models;
+using Sefirah.Views.WindowViews;
+
+
+#if WINDOWS
+using Sefirah.Platforms.Windows.Helpers;
+using Sefirah.Platforms.Windows.Interop;
+#endif
+
+namespace Sefirah;
+public partial class App : Application
+{
+    public static bool HandleClosedEvents { get; set; } = true;
+    public static nint WindowHandle { get; private set; }
+    public static Window MainWindow { get; private set; } = null!;
+    protected IHost? Host { get; private set; }
+    
+    // Track open DeviceSettingsWindow instances
+    private static readonly Dictionary<string, DeviceSettingsWindow> DeviceSettingsWindows = [];
+
+    public App()
+    {
+        InitializeComponent();
+        // Configure exception handlers
+        UnhandledException += (sender, e) => AppLifecycleHelper.HandleAppUnhandledException(e.Exception);
+        AppDomain.CurrentDomain.UnhandledException += (sender, e) => AppLifecycleHelper.HandleAppUnhandledException(e.ExceptionObject as Exception);
+        TaskScheduler.UnobservedTaskException += (sender, e) =>
+        {
+            e.SetObserved();
+            AppLifecycleHelper.HandleAppUnhandledException(e.Exception);
+        };
+    }
+
+    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    {
+        _ = ActivateAsync();
+
+        async Task ActivateAsync()
+        {
+            var builder = this.ConfigureApp(args);
+            MainWindow = builder.Window;
+            MainWindow.AppWindow.Title = "Frontbit Link";
+            MainWindow.SetWindowIcon();
+            if (MainWindow.AppWindow.Presenter is OverlappedPresenter presenter)
+            {
+                presenter.PreferredMinimumWidth = 360;
+                presenter.PreferredMinimumHeight = 400;
+            }
+#if WINDOWS
+            WindowHandle = WindowNative.GetWindowHandle(MainWindow);
+            MainWindow.ExtendsContentIntoTitleBar = true;
+#endif
+#if DEBUG
+            MainWindow.UseStudio();
+#endif
+
+            // Put real UI in the window before starting the host. Host startup
+            // initializes device/network services and can take a while; an
+            // empty WinUI window is rendered as a black screen during that time.
+            var rootFrame = EnsureWindowIsInitialized();
+            if (rootFrame is null)
+                return;
+            // WelcomePage has no service dependencies, so use it as the first
+            // interactive shell while the dependency container is built.
+            rootFrame.Navigate(typeof(WelcomePage));
+
+            // Show the loading screen before starting services so the user sees
+            // immediate feedback while app initialization is in progress.
+            MainWindow.Activate();
+            MainWindow.AppWindow.Show();
+
+            Host = builder.Build();
+            Ioc.Default.ConfigureServices(Host.Services);
+
+            // Services are now registered, so show the real app immediately.
+            // Platform startup checks (startup-task registration, tray setup,
+            // device discovery) must not block initial navigation.
+            rootFrame.Navigate(GetInitialPageType(), null, new SuppressNavigationTransitionInfo());
+
+            _ = Task.Run(() => StartHostInBackgroundAsync(Host));
+
+            bool isStartupTask = false;
+#if WINDOWS
+            var appActivationArguments = Microsoft.Windows.AppLifecycle.AppInstance.GetCurrent().GetActivatedEventArgs();
+            isStartupTask = appActivationArguments.Data is IStartupTaskActivatedEventArgs;
+
+            bool isStartupRegistered = !AppLocalSettings.Get("isStartupRegistered", false);
+            if (isStartupRegistered)
+            {
+                try
+                {
+                    await AppLifecycleHelper.HandleStartupTaskAsync(true);
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Could not register startup task: {ex}");
+                }
+                AppLocalSettings.Set("isStartupRegistered", true);
+            }
+
+            if (appActivationArguments.Data is ProtocolActivatedEventArgs protocolArgs)
+                HandleProtocolActivationArgs(protocolArgs);
+#endif
+            HookEventsForWindow();
+            _ = Ioc.Default.GetRequiredService<ISystemTrayService>();
+
+            Ioc.Default.GetRequiredService<IAppThemeModeService>().ManageAppearance(MainWindow);
+
+            if (isStartupTask)
+            {
+                var userSettingsService = Ioc.Default.GetRequiredService<IUserSettingsService>();
+                var startupOption = userSettingsService.GeneralSettingsService.StartupOption;
+                switch (startupOption)
+                {
+                    case StartupOptions.InTray:
+                        // Don't activate or show the window
+                        break;
+                    case StartupOptions.Minimized:
+                        // Need to show the window first, then minimize it
+                        MainWindow.Activate();
+                        await Task.Delay(200);
+                        OverlappedPresenter overlappedPresenter = (MainWindow.AppWindow.Presenter as OverlappedPresenter) ?? OverlappedPresenter.Create();
+                        if (overlappedPresenter.IsMinimizable)
+                        {
+                            overlappedPresenter.Minimize();
+                        }
+                        break;
+                    default:
+                        MainWindow.Activate();
+                        MainWindow.AppWindow.Show();
+                        break;
+                };
+            }
+            else
+            {
+                MainWindow.Activate();
+                // Wait for the Window to initialize
+                await Task.Delay(10);
+                MainWindow.AppWindow.Show();
+            }
+
+            // Always surface the window for direct/unpackaged launches. This
+            // prevents a stale tray/startup preference from making the app
+            // appear to be stuck with no visible progress indicator.
+            MainWindow.AppWindow.Show();
+            MainWindow.Activate();
+
+            // Device discovery, ADB, and network initialization may wait on
+            // hardware or network availability. Keep those services running
+            // without holding the user on the splash screen indefinitely.
+            _ = Task.Run(() => InitializeAppComponentsInBackgroundAsync());
+            await Task.Delay(500);
+
+        }
+    }
+
+    private static async Task InitializeAppComponentsInBackgroundAsync()
+    {
+        try
+        {
+            await AppLifecycleHelper.InitializeAppComponentsAsync();
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                Ioc.Default.GetService<Microsoft.Extensions.Logging.ILogger>()?
+                    .LogError(ex, "Background app component initialization failed");
+            }
+            catch (InvalidOperationException)
+            {
+                Debug.WriteLine($"Background app component initialization failed: {ex}");
+            }
+        }
+    }
+
+    private static async Task StartHostInBackgroundAsync(IHost host)
+    {
+        try
+        {
+            await host.StartAsync();
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                Ioc.Default.GetService<Microsoft.Extensions.Logging.ILogger>()?
+                    .LogError(ex, "Application host startup failed");
+            }
+            catch (InvalidOperationException)
+            {
+                Debug.WriteLine($"Application host startup failed: {ex}");
+            }
+        }
+    }
+
+    private static Type GetInitialPageType()
+    {
+        try
+        {
+            return AppLocalSettings.Get("HasCompletedOnboarding", false) is false
+                ? typeof(WelcomePage)
+                : typeof(MainPage);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Could not read onboarding state; showing welcome page: {ex}");
+            return typeof(WelcomePage);
+        }
+    }
+
+    public Frame? EnsureWindowIsInitialized()
+    {
+        try
+    {
+        //  NOTE:
+        //  Do not repeat app initialization when the Window already has content,
+        //  just ensure that the window is active
+        if (MainWindow.Content is not Frame rootFrame)
+        {
+            // Create a Frame to act as the navigation context and navigate to the first page
+            rootFrame = new() { CacheSize = 1 };
+            rootFrame.NavigationFailed += OnNavigationFailed;
+
+            // Place the frame in the current Window
+            MainWindow.Content = rootFrame;
+        }
+
+        return rootFrame;
+    }
+
+        catch (COMException)
+        {
+            return null;
+        }
+    }
+
+
+#if WINDOWS
+
+    /// <summary>
+    /// Gets invoked when the application is activated.
+    /// </summary>
+    public async Task OnActivatedAsync(AppActivationArguments activatedEventArgs)
+    {
+        // InitializeApplication accesses UI, needs to be called on UI thread
+        await MainWindow.DispatcherQueue.EnqueueAsync(() => InitializeApplicationAsync(activatedEventArgs));
+    }
+
+    /// <summary>Parses sefirah://&lt;package&gt; and launches scrcpy for that package.</summary>
+    private static async void HandleProtocolActivationArgs(ProtocolActivatedEventArgs protocolArgs)
+    {
+        var package = protocolArgs.Uri.Host;
+        if (string.IsNullOrEmpty(package)) return;
+        var screenMirror = Ioc.Default.GetRequiredService<IScreenMirrorService>();
+        screenMirror.LaunchAppByPackage(package);
+    }
+
+    public static async Task InitializeApplicationAsync(AppActivationArguments activatedEventArgs)
+    {
+        try
+        {
+            switch (activatedEventArgs.Data)
+            {
+                case ProtocolActivatedEventArgs protocolArgs:
+                    HandleProtocolActivationArgs(protocolArgs);
+                    break;
+                case ShareTargetActivatedEventArgs shareArgs:
+                    MainWindow.AppWindow.Show();
+                    MainWindow.Activate();
+                    await HandleShareTargetActivation(shareArgs);
+                    break;
+                default:
+                    MainWindow.AppWindow.Show();
+                    MainWindow.Activate();
+                    break;
+            }
+        }
+        catch (COMException)
+        {
+            // Data not available 
+            // Can happen when share data operation is not completed
+            return;
+        }
+    }
+
+#endif
+
+    private void HookEventsForWindow()
+    {
+#if WINDOWS
+        MainWindow.Activated += Window_Activated;
+#endif
+        MainWindow.Closed += Window_Closed;
+    }
+
+    private void Window_Closed(object sender, WindowEventArgs args)
+    {
+        if (!HandleClosedEvents)
+            return;
+
+        if (Ioc.Default.GetService<ISystemTrayService>() is not { IsAvailable: true })
+            return;
+
+        args.Handled = true;
+        MainWindow.AppWindow.Hide();
+    }
+
+    public static void TrayStartScrcpy()
+    {
+        var device = Ioc.Default.GetRequiredService<IDeviceManager>().ActiveDevice;
+        if (device is not null)
+            _ = Ioc.Default.GetRequiredService<IScreenMirrorService>().StartScrcpy(device);
+    }
+
+    public static void TrayToggleWindow()
+    {
+        MainWindow.DispatcherQueue.TryEnqueue(() =>
+        {
+            var presenter = MainWindow.AppWindow.Presenter as OverlappedPresenter;
+            var isMinimized = presenter?.State is OverlappedPresenterState.Minimized;
+
+            if (!MainWindow.Visible || isMinimized)
+            {
+                ShowMainWindow();
+                return;
+            }
+
+            MainWindow.AppWindow.Hide();
+        });
+    }
+
+    public static void ShowMainWindow()
+    {
+        var presenter = MainWindow.AppWindow.Presenter as OverlappedPresenter;
+        if (presenter?.State is OverlappedPresenterState.Minimized)
+            presenter.Restore();
+
+        MainWindow.AppWindow.Show();
+        MainWindow.Activate();
+#if WINDOWS
+        InteropHelpers.SetForegroundWindow(WindowHandle);
+#endif
+    }
+
+    public static void TrayExitApplication()
+    {
+        HandleClosedEvents = false;
+        Ioc.Default.GetService<ISystemTrayService>()?.Dispose();
+        MainWindow?.Close();
+        Current.Exit();
+    }
+
+#if WINDOWS
+    private void Window_Activated(object sender, WindowActivatedEventArgs args)
+    {
+        if (args.WindowActivationState is WindowActivationState.CodeActivated ||
+            args.WindowActivationState is WindowActivationState.PointerActivated)
+            return;
+
+        AppLocalSettings.Set("INSTANCE_ACTIVE", -Environment.ProcessId);
+    }
+
+    public static async Task HandleShareTargetActivation(ShareTargetActivatedEventArgs args)
+    {
+        var shareOperation = args.ShareOperation;
+        var fileTransferService = Ioc.Default.GetRequiredService<IFileTransferService>();
+        var items = await shareOperation.Data.GetStorageItemsAsync();
+        shareOperation.ReportDataRetrieved();
+        shareOperation.ReportCompleted();
+        fileTransferService.SendFilesWithPicker(items);
+    }
+#endif
+
+    private void OnNavigationFailed(object sender, NavigationFailedEventArgs e)
+    {
+        var error = e.Exception ?? new InvalidOperationException("Failed to load Page " + e.SourcePageType.FullName);
+        AppLifecycleHelper.HandleAppUnhandledException(error);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Opens DeviceSettingsWindow for the specified device.
+    /// </summary>
+    public static DeviceSettingsWindow OpenDeviceSettingsWindow(PairedDevice device)
+    {
+        if (DeviceSettingsWindows.TryGetValue(device.Id, out var existingWindow))
+        {
+            // Window exists, activate it
+            existingWindow.Activate();
+            return existingWindow;
+        }
+
+        // Create new window
+        var newWindow = new DeviceSettingsWindow(device);
+        DeviceSettingsWindows[device.Id] = newWindow;
+        newWindow.Activate();
+        return newWindow;
+    }
+
+    /// <summary>
+    /// Removes DeviceSettingsWindow when it is closed.
+    /// </summary>
+    public static void RemoveDeviceSettingsWindow(string deviceId)
+    {
+        DeviceSettingsWindows.Remove(deviceId);
+    }
+
+    /// <summary>
+    /// Closes an open DeviceSettingsWindow for the given device, if any.
+    /// </summary>
+    public static void CloseDeviceSettingsWindow(string deviceId)
+    {
+        if (!DeviceSettingsWindows.TryGetValue(deviceId, out var window))
+            return;
+
+        try
+        {
+            window.Close();
+        }
+        catch (Exception)
+        {
+            DeviceSettingsWindows.Remove(deviceId);
+        }
+    }
+}

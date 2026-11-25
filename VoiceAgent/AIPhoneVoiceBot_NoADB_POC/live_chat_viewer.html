@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<title>Live Call Chat</title>
+<style>
+  :root { --bg:#f3f5f8; --panel:#fff; --ink:#1d2430; --muted:#6b7686; --caller:#ffffff; --bot:#dcf5e3;
+          --bad:#c0392b; --badbg:#fdecea; --warn:#9a6700; --warnbg:#fff4d6; --line:#dde3ea; --accent:#1f7a45; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:"Segoe UI","Nirmala UI",sans-serif; background:var(--bg); color:var(--ink);
+         height:100vh; display:flex; flex-direction:column; }
+  header { background:var(--panel); border-bottom:1px solid var(--line); padding:10px 16px;
+           display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; flex:1; }
+  .pill { font-size:12px; font-weight:600; padding:3px 10px; border-radius:99px; background:#e6e9ee; color:var(--muted); }
+  .pill.ok { background:#d8f3e1; color:var(--accent); }
+  .pill.live { background:#fde2e1; color:var(--bad); }
+  button { font:inherit; font-size:12px; border:1px solid var(--line); background:#fff; border-radius:6px;
+           padding:4px 10px; cursor:pointer; }
+  #chat { flex:1; overflow-y:auto; padding:16px; display:flex; flex-direction:column; gap:8px; }
+  .row { display:flex; flex-direction:column; max-width:78%; }
+  .row.caller { align-self:flex-start; }
+  .row.bot { align-self:flex-end; align-items:flex-end; }
+  .who { font-size:11px; color:var(--muted); margin:0 4px 2px; }
+  .bubble { padding:8px 12px; border-radius:12px; font-size:17px; line-height:1.45; white-space:pre-wrap;
+            word-break:break-word; box-shadow:0 1px 1px rgba(0,0,0,.06); }
+  .caller .bubble { background:var(--caller); border:1px solid var(--line); border-top-left-radius:3px; }
+  .bot .bubble { background:var(--bot); border-top-right-radius:3px; }
+  .typing .bubble { background:transparent; border:1px dashed #aab4c0; color:var(--muted); font-style:italic; }
+  .tag { display:inline-block; font-size:11px; margin-top:3px; padding:1px 7px; border-radius:5px;
+         background:#eef1f5; color:var(--muted); }
+  .tag.bad { background:var(--badbg); color:var(--bad); font-weight:600; }
+  .tag.warn { background:var(--warnbg); color:var(--warn); font-weight:600; }
+  .tag.fast { background:#d8f3e1; color:var(--accent); font-weight:600; }
+  .raw { font-size:13px; color:var(--muted); }
+  .divider { align-self:center; font-size:12px; color:var(--muted); background:#e6e9ee;
+             padding:3px 12px; border-radius:99px; margin:6px 0; }
+  .empty { margin:auto; color:var(--muted); text-align:center; font-size:14px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>📞 Live Call Chat</h1>
+  <span id="ready" class="pill">Bot: ...</span>
+  <span id="call" class="pill">No call</span>
+  <button id="clear" title="Hide old messages on this screen (the bot is not affected)">Clear screen</button>
+</header>
+<div id="chat"><div class="empty" id="empty">Call aave etle ahiya live dekhashe:<br>
+  left = caller shu bolyo (bot e shu sambhalyu), right = bot no answer.</div></div>
+<script>
+const REASONS = {
+  no_answer: ["Not answered: FAQ match nahi", "bad"],
+  noise_or_low_confidence: ["Not answered: avaj clear nahi (STT reject)", "bad"],
+  welcome_guard_audio: ["Ignored: welcome vagtu hatu tyare bolya", "warn"],
+  no_active_call: ["Ignored: call active nahoto", "warn"],
+  during_bot_speech: ["Ignored: bot bolto hato (echo)", "warn"],
+  unclear_during_bot_speech: ["Ignored: bot bolto hato ane clear FAQ nahi", "warn"],
+  bot_echo_rejected: ["Ignored: bot no j avaj pacho avyo (echo)", "warn"],
+  far_voice_rejected: ["Ignored: dur no / dhimo avaj", "warn"],
+  quiet_background_rejected: ["Ignored: background avaj", "warn"],
+  unmatched_background_rejected: ["Ignored: dhimo avaj, FAQ match nahi", "warn"],
+  short_unknown_audio_rejected: ["Ignored: bahu tunku, FAQ match nahi", "warn"],
+  same_answer_recently_given: ["Same answer abhi j aapyo, repeat nahi karyo", "warn"],
+  duplicate_question: ["Same question pharithi (2 sec ma)", "warn"],
+  already_answered_live: ["Already answered", "warn"],
+  fallback_call_trigger_audio: ["Call start avaj", "warn"],
+};
+function howLabel(how, score) {
+  how = how || "";
+  if (how === "welcome") return ["welcome", ""];
+  if (how === "retry_prompt") return ["samjayu nahi: pharithi puchva kahyu", "bad"];
+  if (how.startsWith("unknown")) return ["FAQ ma answer nathi", "bad"];
+  let kind = how.split(":")[0];
+  const names = { meaning: "meaning model", bestzone: "product CSV", exact: "exact FAQ", contained: "FAQ words",
+                  keywords: "keywords", predicted: "predicted", sound: "sound match", words: "word sound",
+                  retry_combined: "2 try joine", unconfirmed: "unconfirmed" };
+  let label = (names[kind] || kind || "match") + (score ? " · " + Math.round(score * 100) + "%" : "");
+  if (kind === "meaning") { const m = how.split(":"); label += " · ≈ " + m[1]; }
+  return [label, ""];
+}
+const chat = document.getElementById("chat");
+let lastSeq = 0, hiddenUpTo = 0, botByUtt = {}, typingByUtt = {};
+
+function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text; return n; }
+function nearBottom() { return chat.scrollHeight - chat.scrollTop - chat.clientHeight < 120; }
+function row(side, who, time) { const r = el("div", "row " + side); r.appendChild(el("div", "who", who + " · " + time)); return r; }
+
+function add(e) {
+  const empty = document.getElementById("empty"); if (empty) empty.remove();
+  if (e.kind === "call_start") { chat.appendChild(el("div", "divider", "📞 Call start " + e.time)); botByUtt = {}; return; }
+  if (e.kind === "call_end") { chat.appendChild(el("div", "divider", "Call end " + e.time)); return; }
+  if (e.kind === "partial") {
+    let r = typingByUtt[e.utt];
+    if (!r) { r = row("caller typing", "Caller bole che… (live)", e.time); r.appendChild(el("div", "bubble"));
+              typingByUtt[e.utt] = r; chat.appendChild(r); }
+    r.querySelector(".bubble").textContent = e.text + " …";
+    return;
+  }
+  if (e.kind === "caller") {
+    const t = typingByUtt[e.utt]; if (t) { t.remove(); delete typingByUtt[e.utt]; }
+    const r = row("caller", "Caller (bot e aavu sambhalyu)", e.time);
+    const b = el("div", "bubble", e.text || "(kai shabd na samjaya)");
+    if (!e.text && e.raw) b.appendChild(el("div", "raw", "STT: " + e.raw));
+    r.appendChild(b);
+    if (e.reason) { const [label, cls] = REASONS[e.reason] || ["Not answered: " + e.reason, "bad"];
+                    r.appendChild(el("span", "tag " + cls, label)); }
+    chat.appendChild(r); return;
+  }
+  if (e.kind === "bot") {
+    const r = row("bot", "Bot", e.time);
+    r.appendChild(el("div", "bubble", e.text));
+    let [label, cls] = howLabel(e.how, e.score);
+    if (e.stt === "fallback") label += " · 2nd STT model";
+    if (label) r.appendChild(el("span", "tag " + cls, label));
+    if (e.utt !== undefined) botByUtt[e.utt] = r;
+    chat.appendChild(r); return;
+  }
+  if (e.kind === "timing") {
+    const r = botByUtt[e.utt]; if (!r || e.ms == null) return;
+    const s = (e.ms / 1000).toFixed(2);
+    r.appendChild(el("span", "tag " + (e.ms <= 1500 ? "fast" : "warn"), "reply " + s + " s pachi"));
+  }
+}
+
+async function poll() {
+  try {
+    const data = await window.pywebview.api.get_chat(lastSeq);
+    if (data.last_seq < lastSeq) { chat.innerHTML = ""; lastSeq = 0; hiddenUpTo = 0; } // bot restarted
+    const stick = nearBottom();
+    for (const e of data.events) { if (e.seq > lastSeq) { lastSeq = e.seq; if (e.seq > hiddenUpTo) add(e); } }
+    if (stick) chat.scrollTop = chat.scrollHeight;
+    const st = data.status || {};
+    const ready = document.getElementById("ready");
+    ready.textContent = st.ready ? "Bot: READY" : "Bot: not ready";
+    ready.className = "pill " + (st.ready ? "ok" : "");
+    const call = document.getElementById("call");
+    call.textContent = st.call_active ? "● Call LIVE" : "No call";
+    call.className = "pill " + (st.call_active ? "live" : "");
+  } catch (err) {}
+  setTimeout(poll, 300);
+}
+document.getElementById("clear").onclick = () => {
+  hiddenUpTo = lastSeq;
+  chat.innerHTML = ""; botByUtt = {}; typingByUtt = {};
+};
+window.addEventListener("pywebviewready", poll);
+</script>
+</body>
+</html>

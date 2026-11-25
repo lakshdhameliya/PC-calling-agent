@@ -1,0 +1,156 @@
+<!doctype html><html><head><meta charset="utf-8"><title>LakshVoiceAgent</title><style>
+:root{--bg:#f2f6fb;--ink:#18283c;--muted:#718096;--blue:#216fae;--soft:#e8f2fc;--line:#d9e3ee}*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#eef6fd,#f9fbfd);font:14px Segoe UI,Arial;color:var(--ink)}.shell{max-width:1420px;margin:22px auto;background:#fff;border:1px solid var(--line);border-radius:27px;box-shadow:0 20px 55px #365a7b18;overflow:hidden}.header{height:104px;padding:22px 32px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}.brand{display:flex;align-items:center;gap:15px}.logo{width:58px;height:58px;border-radius:17px;background:linear-gradient(140deg,#2f8bd4,#1b5e99);display:grid;place-items:center;color:#fff;font-weight:800;font-size:18px}.title{font-size:27px;font-weight:750}.sub,.muted{color:var(--muted);font-size:12px}.status{color:#137347;background:#e7f7ee;border-radius:20px;padding:10px 16px;font-weight:700;font-size:12px}.main{padding:22px 28px 12px}.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}.stat{border:1px solid var(--line);border-radius:17px;padding:15px 18px;background:#fbfdff}.stat b{display:block;color:#718096;font-size:10px;letter-spacing:.6px}.stat strong{display:block;font-size:22px;margin:4px 0}.stat span{color:var(--muted);font-size:11px}.toolbar{display:flex;justify-content:space-between;align-items:end;margin:22px 0 14px}.toolbar h2{margin:0;font-size:21px}.toolbar p{margin:4px 0 0;color:var(--muted);font-size:12px}.actions{display:flex;gap:10px}input,textarea{font:inherit}.search{width:290px;height:42px;border:1px solid #bac9d8;border-radius:10px;padding:0 13px}.button{border:0;border-radius:10px;height:42px;padding:0 16px;font-weight:700;cursor:pointer}.refresh{color:var(--blue);background:var(--soft)}.layout{display:grid;grid-template-columns:5fr 7fr;gap:18px;min-height:540px}.panel{border:1px solid var(--line);border-radius:20px;overflow:hidden;background:#fff}.panelhead{height:66px;padding:18px 21px;font-weight:750;position:relative}.panelhead small{display:block;color:var(--muted);font-weight:400;font-size:11px;margin-top:4px}.faq-list{height:calc(100% - 66px);overflow:auto;background:#f8fafd;padding:8px 12px}.faq-row{width:100%;height:50px;border:1px solid transparent;border-radius:12px;background:transparent;text-align:left;padding:0 13px;cursor:pointer;color:var(--ink)}.faq-row:hover,.faq-row.active{background:#dceeff;border-color:#abd0ed}.no{color:var(--blue);display:inline-block;width:38px;font-size:11px}.details{padding:22px 24px}.detailhead{display:flex;justify-content:space-between;font-weight:750;font-size:16px;margin-bottom:12px}.badge{background:var(--soft);color:var(--blue);border-radius:18px;padding:7px 12px;font-size:10px}.detail-actions{display:flex;gap:8px;margin-bottom:19px}.add{background:#e7f7ee;color:#137347}.edit{background:var(--soft);color:var(--blue)}.delete{background:#fff0f0;color:#a83a3a}.label{color:#718096;font-size:10px;font-weight:750;letter-spacing:.6px;margin:10px 0 7px}.question{font-size:18px;font-weight:700;border-bottom:1px solid var(--line);padding-bottom:17px}.answerbox{background:#f1f8fe;border:1px solid #d4e7f6;border-radius:14px;padding:14px 17px;margin-top:18px}.answer{line-height:1.65;min-height:65px}.vars{border:1px solid #e2e9f0;border-radius:14px;padding:14px 17px;min-height:125px;max-height:220px;overflow:auto;color:#52677f;line-height:1.8}.bottom{margin:0 28px 12px;border:1px solid var(--line);border-radius:16px;background:#f7fafd;padding:13px 20px;display:flex;align-items:center}.source b{display:block;font-size:10px;color:#718096}.source code{font-weight:700}.note{margin-left:24px;color:var(--muted);font-size:12px}.start{margin-left:auto;background:var(--blue);color:#fff}.stop{margin-left:8px;background:#fff0f0;color:#a83a3a}.footer{padding:0 32px;height:42px;display:flex;justify-content:space-between;align-items:center;color:#8794a5;font-size:11px}.modalbg{position:fixed;inset:0;background:#0f1f346b;display:none;align-items:center;justify-content:center;z-index:10}.modalbg.open{display:flex}.modal{width:min(760px,94vw);max-height:92vh;overflow:auto;background:#fff;border-radius:20px;padding:24px;box-shadow:0 25px 70px #0a20384c}.modal h3{margin:0 0 5px}.modal p{color:var(--muted);font-size:12px;margin:0 0 15px}.field{width:100%;border:1px solid #bdcad8;border-radius:10px;padding:10px 12px;resize:vertical}.formlabel{display:block;margin:13px 0 6px;color:#718096;font-size:10px;font-weight:750;letter-spacing:.5px}.vrow{display:flex;gap:7px;margin:7px 0}.vrow input{flex:1;height:40px}.remove{width:40px;background:#fff0f0;color:#a83a3a}.modal-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}.cancel{background:#edf1f5}.save{background:var(--blue);color:#fff}.ai{background:#e7f0fb;color:var(--blue);margin-left:8px}@media(max-width:1050px){.shell{margin:0;border-radius:0}.stats{grid-template-columns:repeat(2,1fr)}.layout{grid-template-columns:1fr}.toolbar{display:block}.actions{margin-top:12px}}
+
+/* Start / Stop / Live Chat bar sits above the FAQ Library. */
+.main .bottom{margin:16px 0 0}
+/* Frontbit Link dark UI */
+:root{--bg:#1f1f1f;--ink:#f3f3f3;--muted:#a9a9a9;--blue:#4db8f5;--soft:#2b2b2b;--line:#3a3a3a}
+body{background:#1f1f1f;color:var(--ink)}
+.shell{max-width:none;margin:0;background:#1f1f1f;border:0;border-radius:0;box-shadow:none}
+.header{display:none!important}
+.main{padding:20px;background:#1f1f1f}
+.stat,.panel,.modal{background:#252525;border-color:#3a3a3a;color:var(--ink)}
+.faq-list{background:#202020}.faq-row{color:var(--ink)}
+.faq-row:hover,.faq-row.active{background:#303030;border-color:#4db8f5}
+.bottom{background:#252525!important;border-color:#3a3a3a!important}
+.answerbox{background:#2a2a2a;border-color:#414141}.vars{border-color:#414141;color:#c4c4c4}
+input,textarea,.search,.field{background:#202020;color:#f3f3f3;border-color:#505050}
+.footer{color:#8f8f8f}.modalbg{background:#000a}
+.stats + div{background:#252525!important;color:#f3f3f3}
+.stats + div b{color:#9fc8e5!important}
+.bh{background:#252525!important;border-color:#3a3a3a!important;color:#f3f3f3}
+.bh-title b{color:#9fc8e5!important}.bh-title span{color:#a9a9a9!important}
+.bh-delay{color:#c8d7e5!important}.bh-row{border-top-color:#3a3a3a!important}
+.bh-day{color:#f3f3f3!important}.bh-switch{color:#c8d7e5!important}
+.bh-delay input,.bh-range input{background:#202020!important;color:#f3f3f3!important;border-color:#505050!important}
+.bh-range button{background:#3a2525!important;color:#ff9d9d!important}.bh-add{color:#4db8f5!important}
+</style></head><body><main class="shell"><header class="header"><div class="brand"><div class="logo">LV</div><div><div class="title">LakshVoiceAgent</div><div class="sub">Professional Hindi FAQ voice automation console</div></div></div><div id="status" class="status">● READY</div></header><section class="main"><div class="stats"><div class="stat"><b>FAQ LIBRARY</b><strong id="count">0</strong><span>Hindi questions</span></div><div class="stat"><b>VOICE CACHE</b><strong id="cache">—</strong><span>Cached answers</span></div><div class="stat"><b>STT ENGINE</b><strong>Turbo GPU</strong><span>CUDA accelerated</span></div><div class="stat"><b>CALL ROUTE</b><strong id="route">Checking</strong><span>Phone Link audio</span></div></div><div class="bottom"><div class="source"><b>FAQ SOURCE</b><code>hindi_faq.py</code></div><div id="note" class="note">Ready to manage current FAQs</div><button id="start" class="button start">▶ Start Voice Bot</button><button id="stop" class="button stop">■ Stop Bot</button><button id="liveChat" class="button" type="button" onclick="pywebview.api.open_live_chat()">💬 Live Chat</button></div><div class="toolbar"><div><h2>FAQ Library</h2><p>Manage questions, answers and matching variations.</p></div><div class="actions"><input id="search" class="search" placeholder="Search question, answer or variation..."><button class="button refresh" id="refresh">↻ Refresh FAQs</button></div></div><div class="layout"><section class="panel"><div class="panelhead">Questions<button id="addTop" class="button add" style="position:absolute;right:14px;top:12px;height:36px">＋ Add FAQ</button><small>Click a question to view its answer</small></div><div id="list" class="faq-list"></div></section><section class="panel details"><div class="detailhead">FAQ Details <span id="badge" class="badge">SELECT AN FAQ</span></div><div class="detail-actions"><button id="add" class="button add">＋ Add FAQ</button><button id="edit" class="button edit">✎ Edit FAQ</button><button id="del" class="button delete">⌫ Delete FAQ</button></div><div class="label">CALLER QUESTION</div><div id="question" class="question">Select a question.</div><div class="answerbox"><div class="label">BOT ANSWER</div><div id="answer" class="answer">Select an FAQ to view its answer.</div></div><div class="label" style="margin-top:16px">MATCHING VARIATIONS</div><div id="vars" class="vars">No FAQ selected.</div></section></div></section><footer class="footer"><span>LakshVoiceAgent · <span id="foot">Monitoring status.json</span></span><span>Phone Link · Faster-Whisper · VB-CABLE</span></footer></main><div id="modalbg" class="modalbg"><div class="modal"><h3 id="modaltitle">Add FAQ</h3><p>Enter a question and answer. Generate Hindi, Hinglish, English and phone-STT variations, then edit them before saving.</p><label class="formlabel">QUESTION</label><textarea id="fq" class="field" rows="2"></textarea><label class="formlabel">ANSWER</label><textarea id="fa" class="field" rows="3"></textarea><label class="formlabel">MATCHING VARIATIONS</label><div id="vfields"></div><button id="manual" class="button" style="height:35px;background:#f0f6fb;color:#216fae">＋ Add variation</button><button id="ai" class="button ai" style="height:35px">✦ AI Generated Variations</button><div class="modal-actions"><button id="cancel" class="button cancel">Cancel</button><button id="save" class="button save">Save FAQ</button></div></div></div><div id="toast" style="position:fixed;right:28px;bottom:28px;background:#18283c;color:white;border-radius:10px;padding:13px 18px;display:none"></div>
+<script>
+// When hosted inside Frontbit Link, replace pywebview's bridge with the local
+// HTTP bridge exposed by faq_voice_start_page.py --server.
+if (!window.pywebview) {
+  window.pywebview = {api: new Proxy({}, {get: (_, name) => (...args) => fetch('/api/'+name, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(args)}).then(r=>r.json())})};
+  setTimeout(() => window.dispatchEvent(new Event('pywebviewready')), 0);
+}
+
+let faqs=[],selected=0,editId=null;const $=id=>document.getElementById(id);function toast(x){$('toast').textContent=x;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',3500)}
+function render(){const term=$('search').value.toLowerCase();$('list').innerHTML='';faqs.filter(f=>(f.question+' '+f.answer+' '+f.variations.join(' ')).toLowerCase().includes(term)).forEach(f=>{const b=document.createElement('button');b.className='faq-row'+(f.id===selected?' active':'');b.innerHTML='<span class="no">'+String(f.id+1).padStart(2,'0')+'</span>'+esc(f.question);b.onclick=()=>{selected=f.id;render();show()};$('list').appendChild(b)});show()}
+function show(){const f=faqs.find(x=>x.id===selected);if(!f)return;$('badge').textContent='FAQ '+String(f.id+1).padStart(2,'0');$('question').textContent=f.question;$('answer').textContent=f.answer;$('vars').innerHTML=f.variations.length?f.variations.map(v=>'• '+esc(v)).join('<br>'):'No variations configured.'}
+function esc(x){return String(x).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function addVar(v=''){const r=document.createElement('div');r.className='vrow';r.innerHTML='<input class="field vinput"><button class="button remove">×</button>';r.querySelector('input').value=v;r.querySelector('button').onclick=()=>r.remove();$('vfields').appendChild(r)}
+function openEditor(id){editId=id;const f=id===null?{question:'',answer:'',variations:[]}:faqs.find(x=>x.id===id);if(!f)return;$('modaltitle').textContent=id===null?'Add FAQ':'Edit FAQ';$('fq').value=f.question;$('fa').value=f.answer;$('vfields').innerHTML='';f.variations.forEach(addVar);$('modalbg').classList.add('open')}
+function closeEditor(){$('modalbg').classList.remove('open')}async function load(){const r=await pywebview.api.refresh_faqs();if(!r.ok){toast(r.error);return}faqs=r.faqs;$('count').textContent=faqs.length;render()}
+$('refresh').onclick=load;$('search').oninput=render;$('add').onclick=$('addTop').onclick=()=>openEditor(null);$('edit').onclick=()=>openEditor(selected);$('cancel').onclick=closeEditor;$('manual').onclick=()=>addVar();
+$('ai').onclick=async()=>{const q=$('fq').value.trim(),a=$('fa').value.trim();if(!q||!a){toast('Enter question and answer first');return}$('ai').disabled=true;$('ai').textContent='Generating…';try{const r=await pywebview.api.generate_ai_variations(q,a);if(!r.ok){toast(r.error);return}$('vfields').innerHTML='';r.variations.forEach(addVar);toast(r.variations.length+' variations generated')}catch(e){toast(String(e))}finally{$('ai').disabled=false;$('ai').textContent='✦ AI Generated Variations'}};
+$('save').onclick=async()=>{const q=$('fq').value.trim(),a=$('fa').value.trim(),v=[...document.querySelectorAll('.vinput')].map(x=>x.value.trim()).filter(Boolean);if(!q||!a){toast('Question and answer are required');return}const next=faqs.map(f=>({question:f.question,answer:f.answer,variations:[...f.variations]}));const row={question:q,answer:a,variations:v};if(!v.length)row._regenerate_variations=true;if(editId===null)next.push(row);else next[editId]=row;const r=await pywebview.api.save_faqs(next);if(!r.ok){toast(r.error);return}faqs=r.faqs;selected=editId===null?faqs.length-1:editId;$('count').textContent=faqs.length;render();closeEditor();toast('FAQ saved. Restart bot to rebuild voice cache.')};
+$('del').onclick=async()=>{const f=faqs.find(x=>x.id===selected);if(!f||!confirm('Delete this FAQ?\n\n'+f.question))return;const r=await pywebview.api.save_faqs(faqs.filter(x=>x.id!==selected).map(x=>({question:x.question,answer:x.answer,variations:x.variations})));if(!r.ok){toast(r.error);return}faqs=r.faqs;selected=Math.max(0,selected-1);$('count').textContent=faqs.length;render();toast('FAQ deleted.')};
+$('start').onclick=async()=>{const r=await pywebview.api.start_bot();toast(r.message||r.error)};$('stop').onclick=async()=>{const r=await pywebview.api.stop_bot();toast(r.message)};async function poll(){try{const s=await pywebview.api.get_status();$('cache').textContent=(s.cached_answers??'—')+'/'+(s.cache_total??'—');$('route').textContent=s.capture_device&&s.voice_device?'Ready':'Checking';$('foot').textContent=(s.state||'waiting')+' · voice='+(s.voice||'waiting')}catch(e){}}window.addEventListener('pywebviewready',()=>{load();poll();setInterval(poll,1000)});
+</script>
+<script>
+
+(function(){
+  const start=$('start'), stop=$('stop'), status=$('status'), note=$('note');
+  const delayWrap=document.createElement('label');
+  delayWrap.style.cssText='display:flex;align-items:center;gap:8px;margin-left:auto;color:#52677f;font-size:12px;font-weight:700';
+  delayWrap.innerHTML='Baki samay pickup delay <input id="pickupDelay" type="number" min="0" max="120" step="1" value="5" style="width:68px;height:38px;border:1px solid #bac9d8;border-radius:9px;padding:0 9px"> sec';
+  start.parentNode.insertBefore(delayWrap,start);
+  start.style.marginLeft='12px';
+  const style=document.createElement('style');
+  style.textContent='.button:disabled{opacity:.48;cursor:not-allowed;filter:saturate(.35)}';
+  document.head.appendChild(style);
+  const readyNames={stt_warm:'STT model',cuda_warm:'CUDA',faq_matcher:'FAQ matcher',tts_cache:'TTS cache',cable_output:'CABLE output'};
+  function update(running, starting, s){
+    start.disabled=Boolean(running||starting);
+    stop.disabled=!running&&!starting;
+    const ready=Boolean(running&&s&&s.ready===true);
+    const waiting=(s&&s.not_ready_reasons||[]).map(k=>readyNames[k]||k);
+    status.textContent=starting?'● STARTING':ready?'● READY':running?'● LOADING / NOT READY':'● STOPPED';
+    let text=starting?'Bot is starting…':ready?'Bot is ready for calls':running?'Bot is running — waiting for: '+(waiting.join(', ')||'startup'):'Bot is stopped';
+    if(running&&s&&s.tts_missing&&s.tts_missing.length)text+=' | No cached voice yet for '+s.tts_missing.length+' answer(s)';
+    if(running&&s&&s.last_timing&&s.last_timing.end_of_speech_to_playback_ms!=null)text+=' | last reply '+s.last_timing.end_of_speech_to_playback_ms+' ms';
+    note.textContent=text;
+  }
+  async function refreshButtons(){try{const s=await pywebview.api.get_status();update(Boolean(s.bot_running),false,s);}catch(e){update(false);}}
+  start.onclick=async()=>{update(false,true);try{const delay=Math.max(0,Math.min(120,Number($('pickupDelay').value)||0));const r=await pywebview.api.start_bot(delay);toast(r.message||r.error);if(!r.ok)update(false);}catch(e){update(false);toast(String(e));}};
+  stop.onclick=async()=>{try{const r=await pywebview.api.stop_bot();toast(r.message||r.error);}finally{refreshButtons();}};
+  window.addEventListener('pywebviewready',()=>{update(false);refreshButtons();setInterval(refreshButtons,1000);});
+})();
+</script>
+
+<script>
+(function(){
+const style=document.createElement('style');style.textContent='.keyword-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:8px}.keyword-grid small{display:block;color:#718096;font-weight:700;font-size:11px;margin-bottom:5px}.keyword-add{height:32px!important;padding:0 9px!important;font-size:11px;background:#f0f6fb;color:#216fae}.kwrow{display:flex;gap:5px;margin:5px 0}.kwrow input{height:34px;padding:6px 8px}.kwrow button{width:30px;height:34px;padding:0;background:#fff0f0;color:#a83a3a}@media(max-width:850px){.keyword-grid{grid-template-columns:1fr}}';document.head.appendChild(style);
+const manual=document.querySelector('#manual');const box=document.createElement('div');box.className='keyword-grid';box.innerHTML='<div><small>Hindi</small><div id="kh"></div><button id="addkh" class="button keyword-add">＋ Hindi keyword</button></div><div><small>English</small><div id="ke"></div><button id="addke" class="button keyword-add">＋ English keyword</button></div><div><small>Hinglish</small><div id="kg"></div><button id="addkg" class="button keyword-add">＋ Hinglish keyword</button></div>';manual.insertAdjacentElement('afterend',box);
+function addKeyword(lang,value=''){const row=document.createElement('div');row.className='kwrow';row.innerHTML='<input class="field kwinput"><button class="button">×</button>';row.querySelector('input').value=value;row.querySelector('input').dataset.lang=lang;row.querySelector('button').onclick=()=>row.remove();document.querySelector('#k'+lang).appendChild(row)}
+function fillKeywords(k){['hindi','english','hinglish'].forEach(lang=>{const id=lang==='hindi'?'kh':lang==='english'?'ke':'kg';document.querySelector('#'+id).innerHTML='';(k&&k[lang]||[]).forEach(v=>addKeyword(lang,v))})}
+document.querySelector('#addkh').onclick=()=>addKeyword('hindi');document.querySelector('#addke').onclick=()=>addKeyword('english');document.querySelector('#addkg').onclick=()=>addKeyword('hinglish');
+const oldOpenEditor=openEditor;openEditor=function(id){oldOpenEditor(id);const f=id===null?null:faqs.find(x=>x.id===id);fillKeywords(f&&f.keywords||{})};
+document.querySelector('#ai').onclick=async()=>{const q=document.querySelector('#fq').value.trim(),a=document.querySelector('#fa').value.trim();if(!q||!a){toast('Enter question and answer first');return}const button=document.querySelector('#ai');button.disabled=true;button.textContent='Generating…';try{const r=await pywebview.api.generate_ai_variations(q,a);if(!r.ok){toast(r.error);return}document.querySelector('#vfields').innerHTML='';r.variations.forEach(addVar);fillKeywords(r.keywords||{});toast(r.variations.length+' full variations and keyword groups generated')}catch(e){toast(String(e))}finally{button.disabled=false;button.textContent='✦ AI Generated Variations'}};
+document.querySelector('#save').onclick=async()=>{const q=document.querySelector('#fq').value.trim(),a=document.querySelector('#fa').value.trim(),v=[...document.querySelectorAll('.vinput')].map(x=>x.value.trim()).filter(Boolean),keywords={hindi:[],english:[],hinglish:[]};document.querySelectorAll('.kwinput').forEach(x=>{if(x.value.trim())keywords[x.dataset.lang].push(x.value.trim())});if(!q||!a){toast('Question and answer are required');return}const next=faqs.map(f=>({question:f.question,answer:f.answer,variations:[...f.variations],keywords:f.keywords||{hindi:[],english:[],hinglish:[]}}));const row={question:q,answer:a,variations:v,keywords};if(!v.length&&!keywords.hindi.length&&!keywords.english.length&&!keywords.hinglish.length)row._regenerate_variations=true;if(editId===null)next.push(row);else next[editId]=row;const r=await pywebview.api.save_faqs(next);if(!r.ok){toast(r.error);return}faqs=r.faqs;selected=editId===null?faqs.length-1:editId;document.querySelector('#count').textContent=faqs.length;render();closeEditor();toast('FAQ saved with full variations and keywords.')};
+})();
+</script>
+<script>
+(function(){
+  // Call greeting: spoken as soon as a call starts. Empty = the bot says nothing.
+  const box=document.createElement('div');
+  box.style.cssText='margin-top:16px;border:1px solid var(--line);border-radius:17px;padding:14px 18px;background:#fbfdff';
+  box.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;gap:10px"><div><b style="display:block;color:#718096;font-size:10px;letter-spacing:.6px">CALL GREETING</b><span style="color:var(--muted);font-size:11px">Call start thata j bot aa bolshe. Khali rakho to kai nahi bole.</span></div><button id="saveGreeting" class="button save" style="height:38px">Save Greeting</button></div><textarea id="greeting" class="field" rows="2" style="margin-top:10px" placeholder="जैसे: बेस्टज़ोन में आपका स्वागत है। बताइए, मैं आपकी क्या मदद करूँ?"></textarea>';
+  document.querySelector('.stats').insertAdjacentElement('afterend',box);
+  async function loadGreeting(){try{const r=await pywebview.api.get_greeting();if(r.ok)document.querySelector('#greeting').value=r.text;else toast(r.error)}catch(e){}}
+  document.querySelector('#saveGreeting').onclick=async()=>{const r=await pywebview.api.save_greeting(document.querySelector('#greeting').value);if(!r.ok){toast(r.error);return}document.querySelector('#greeting').value=r.text;toast(r.text?'Greeting saved. Next call thi bolshe.':'Greeting cleared. Call start par bot kai nahi bole.')};
+  window.addEventListener('pywebviewready',loadGreeting);
+  // Pickup delay: saved on change, used by the running bot from the next ring.
+  const delay=document.querySelector('#pickupDelay');
+  if(delay){
+    delay.title='Ring aavya pachhi aatli second pachhi call pickup thashe (0-120). Badlo etle turant save.';
+    window.addEventListener('pywebviewready',async()=>{try{const r=await pywebview.api.get_pickup_delay();if(r.ok)delay.value=r.seconds}catch(e){}});
+    delay.addEventListener('change',async()=>{const r=await pywebview.api.save_pickup_delay(delay.value);if(!r.ok){toast(r.error);return}delay.value=r.seconds;toast('Pickup delay '+r.seconds+' sec saved. Next call thi lagu.')});
+  }
+})();
+(function(){
+  // Business hours: own pickup delay inside the selected days/hours.
+  // Outside them the "Baki samay pickup delay" (bottom bar) is used.
+  const DAYS=[['sun','Sunday'],['mon','Monday'],['tue','Tuesday'],['wed','Wednesday'],['thu','Thursday'],['fri','Friday'],['sat','Saturday']];
+  const css=document.createElement('style');
+  css.textContent='.bh{margin-top:16px;border:1px solid var(--line);border-radius:17px;padding:14px 18px;background:#fbfdff}'
+    +'.bh-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.bh-head .bh-title{flex:1;min-width:220px}'
+    +'.bh-title b{display:block;color:#718096;font-size:10px;letter-spacing:.6px}.bh-title span{color:var(--muted);font-size:11px}'
+    +'.bh-delay{display:flex;align-items:center;gap:8px;color:#52677f;font-size:12px;font-weight:700}'
+    +'.bh-delay input{width:68px;height:38px;border:1px solid #bac9d8;border-radius:9px;padding:0 9px}'
+    +'.bh-row{display:grid;grid-template-columns:110px 130px 1fr;align-items:start;gap:10px;padding:9px 0;border-top:1px solid #edf1f5}'
+    +'.bh-row:first-of-type{margin-top:10px}.bh-day{font-weight:700;padding-top:7px}'
+    +'.bh-switch{display:flex;align-items:center;gap:8px;cursor:pointer;padding-top:4px;color:#52677f}'
+    +'.bh-switch input{display:none}.bh-knob{width:40px;height:22px;border-radius:11px;background:#a0aab5;position:relative;transition:.15s}'
+    +'.bh-knob:after{content:"";position:absolute;left:3px;top:3px;width:16px;height:16px;border-radius:50%;background:#fff;transition:.15s}'
+    +'.bh-switch input:checked+.bh-knob{background:#2563eb}.bh-switch input:checked+.bh-knob:after{left:21px}'
+    +'.bh-range{display:flex;align-items:center;gap:8px;margin-bottom:6px}.bh-range input{height:34px;border:1px solid #bac9d8;border-radius:8px;padding:0 8px}'
+    +'.bh-range button{width:30px;height:34px;border:0;border-radius:8px;background:#fff0f0;color:#a83a3a;cursor:pointer}'
+    +'.bh-add{border:0;background:none;color:#2563eb;font-weight:700;cursor:pointer;padding:6px 0}.bh-closed{color:var(--muted);font-size:12px;padding-top:7px}';
+  document.head.appendChild(css);
+  const card=document.createElement('div');card.className='bh';
+  card.innerHTML='<div class="bh-head"><div class="bh-title"><b>BUSINESS HOURS</b><span>Open divas ane samay ma ring aave to aa pickup delay. Baki samay niche ni "Baki samay pickup delay".</span></div>'
+    +'<label class="bh-delay">Business hours pickup delay <input id="bhDelay" type="number" min="0" max="120" step="1" value="5"> sec</label>'
+    +'<button id="bhSave" class="button save" style="height:38px">Save Hours</button></div><div id="bhDays"></div>';
+  document.querySelector('.main .bottom').insertAdjacentElement('beforebegin',card);
+  function addRange(box,start='',end=''){const r=document.createElement('div');r.className='bh-range';
+    r.innerHTML='<input type="time" class="bh-start"> – <input type="time" class="bh-end"><button title="Remove">×</button>';
+    r.querySelector('.bh-start').value=start;r.querySelector('.bh-end').value=end;r.querySelector('button').onclick=()=>r.remove();box.appendChild(r)}
+  function render(days){const host=document.querySelector('#bhDays');host.innerHTML='';
+    DAYS.forEach(([key,name])=>{const d=days[key]||{open:false,hours:[]};const row=document.createElement('div');row.className='bh-row';row.dataset.day=key;
+      row.innerHTML='<div class="bh-day">'+name+'</div><label class="bh-switch"><input type="checkbox"><span class="bh-knob"></span><span class="bh-state"></span></label><div class="bh-body"><div class="bh-ranges"></div><button class="bh-add" type="button">Add hours</button><div class="bh-closed">Closed</div></div>';
+      const check=row.querySelector('input[type=checkbox]'),ranges=row.querySelector('.bh-ranges');
+      (d.hours||[]).forEach(p=>addRange(ranges,p[0],p[1]));
+      const sync=()=>{const open=check.checked;row.querySelector('.bh-state').textContent=open?'Open':'Closed';
+        row.querySelector('.bh-ranges').style.display=open?'':'none';row.querySelector('.bh-add').style.display=open?'':'none';
+        row.querySelector('.bh-closed').style.display=open?'none':'';
+        if(open&&!ranges.children.length)addRange(ranges)};
+      check.checked=!!d.open;check.onchange=sync;row.querySelector('.bh-add').onclick=()=>addRange(ranges);sync();host.appendChild(row)})}
+  async function load(){try{const r=await pywebview.api.get_business_hours();if(!r.ok){toast(r.error);return}document.querySelector('#bhDelay').value=r.seconds;render(r.days)}catch(e){}}
+  document.querySelector('#bhSave').onclick=async()=>{const days={};
+    document.querySelectorAll('.bh-row').forEach(row=>{days[row.dataset.day]={open:row.querySelector('input[type=checkbox]').checked,
+      hours:[...row.querySelectorAll('.bh-range')].map(r=>[r.querySelector('.bh-start').value,r.querySelector('.bh-end').value])}});
+    const r=await pywebview.api.save_business_hours(document.querySelector('#bhDelay').value,days);
+    if(!r.ok){toast(r.error);return}document.querySelector('#bhDelay').value=r.seconds;render(r.days);toast('Business hours saved. Next call thi lagu.')};
+  window.addEventListener('pywebviewready',load);
+})();
+const _keywordBox=document.querySelector('.keyword-grid');if(_keywordBox&&!document.querySelector('.keyword-heading')){const _keywordLabel=document.createElement('div');_keywordLabel.className='formlabel keyword-heading';_keywordLabel.textContent='KEYWORDS & SHORT PHRASES';_keywordBox.insertAdjacentElement('beforebegin',_keywordLabel)}</script>
+</body></html>

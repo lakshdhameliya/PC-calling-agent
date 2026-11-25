@@ -1,0 +1,204 @@
+<Page
+    x:Class="Sefirah.Views.Settings.DeviceDiscoveryPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:converters="using:Sefirah.Converters"
+    xmlns:helpers="using:Sefirah.Helpers"
+    xmlns:items="using:Sefirah.Data.Items"
+    xmlns:models="using:Sefirah.Data.Models"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:wuc="using:CommunityToolkit.WinUI.Controls"
+    xmlns:vm="using:Sefirah.ViewModels.Settings"
+    Loaded="Page_Loaded"
+    mc:Ignorable="d">
+
+    <Page.Resources>
+        <x:Double x:Key="BreadcrumbBarChevronFontSize">17</x:Double>
+        <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
+        <converters:CountToVisibilityConverter x:Key="InverseCountToVisibilityConverter" Inverse="True" />
+    </Page.Resources>
+
+    <Page.DataContext>
+        <vm:DevicesViewModel x:Name="ViewModel" />
+    </Page.DataContext>
+
+    <ScrollViewer Padding="0,0,40,0">
+        <StackPanel Spacing="4">
+            <!--  Breadcrumb Navigation with QR Code Button & Wireless ADB Button  -->
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <BreadcrumbBar x:Name="BreadcrumbBar" Grid.Column="0">
+                    <BreadcrumbBar.ItemTemplate>
+                        <DataTemplate x:DataType="items:BreadcrumbBarItemModel">
+                            <BreadcrumbBarItem AutomationProperties.Name="{Binding Name}" Content="{Binding}">
+                                <BreadcrumbBarItem.ContentTemplate>
+                                    <DataTemplate>
+                                        <TextBlock
+                                            FontSize="28"
+                                            FontWeight="SemiBold"
+                                            Text="{Binding Name}" />
+                                    </DataTemplate>
+                                </BreadcrumbBarItem.ContentTemplate>
+                            </BreadcrumbBarItem>
+                        </DataTemplate>
+                    </BreadcrumbBar.ItemTemplate>
+                </BreadcrumbBar>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                    <!-- 1. Frontbit Link Mobile App QR Scan -->
+                    <Button
+                        x:Name="QrCodeButton"
+                        Click="QrCodeButton_Click"
+                        BorderThickness="0"
+                        Padding="8">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon FontSize="14" Glyph="&#xED14;" />
+                            <TextBlock Text="Scan QR Code" />
+                        </StackPanel>
+
+                        <Button.Flyout>
+                            <Flyout x:Name="QrCodeFlyout">
+                                <StackPanel Spacing="12" Padding="16" MinWidth="300">
+                                    <Image
+                                        x:Name="QrCodeImage"
+                                        Width="256"
+                                        Height="256"
+                                        HorizontalAlignment="Center"
+                                        Stretch="Uniform" />
+                                    <TextBlock
+                                        x:Name="QrCodeStatusText"
+                                        HorizontalAlignment="Center"
+                                        FontSize="12"
+                                        Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                                        TextWrapping="Wrap"
+                                        TextAlignment="Center" />
+                                </StackPanel>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+
+                    <!-- 2. Wireless ADB Pairing & Connect Button (Auto-Answer & Cut) -->
+                    <Button
+                        x:Name="AdbPairButton"
+                        Click="AdbPairButton_Click"
+                        BorderThickness="0"
+                        Padding="8">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <FontIcon x:Name="AdbButtonIcon" FontSize="14" Glyph="&#xE8EA;" />
+                            <TextBlock x:Name="AdbButtonLabel" Text="Pair Wireless ADB" />
+                        </StackPanel>
+
+                        <Button.Flyout>
+                            <Flyout x:Name="AdbPairFlyout" Opened="AdbPairFlyout_Opened" Closed="AdbPairFlyout_Closed">
+                                <ScrollViewer MaxHeight="600">
+                                    <StackPanel Spacing="12" Padding="14" Width="380">
+                                        <!-- Header -->
+                                        <StackPanel Spacing="2">
+                                            <TextBlock Text="Wireless ADB Status" FontSize="17" FontWeight="SemiBold" />
+                                            <TextBlock Text="કૉલ ઓટોમેટિક ઉપાડવા અને કટ કરવા માટેનું કનેક્શન" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                                        </StackPanel>
+
+                                        <!-- Status Card -->
+                                        <Border x:Name="AdbStatusCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="10">
+                                            <Grid ColumnSpacing="10">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto" />
+                                                    <ColumnDefinition Width="*" />
+                                                </Grid.ColumnDefinitions>
+                                                <ProgressRing x:Name="AdbProgressRing" Width="18" Height="18" IsActive="False" Visibility="Collapsed" VerticalAlignment="Center" />
+                                                <FontIcon x:Name="AdbStatusIcon" FontSize="18" Glyph="&#xE73E;" Foreground="{ThemeResource SystemFillColorSuccessBrush}" Visibility="Collapsed" VerticalAlignment="Center" />
+                                                <TextBlock x:Name="AdbStatusText" Grid.Column="1" FontSize="12" Text="Checking ADB status..." TextWrapping="Wrap" VerticalAlignment="Center" />
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- 1-Click Auto Connect Button -->
+                                        <Button x:Name="AdbAutoConnectBtn" Click="AdbRefreshButton_Click" HorizontalAlignment="Stretch" Style="{ThemeResource AccentButtonStyle}" Padding="8">
+                                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                                <FontIcon Glyph="&#xE701;" FontSize="14" />
+                                                <TextBlock Text="૧-ક્લિક ઓટો કનેક્ટ (Auto Connect Phone)" FontWeight="SemiBold" FontSize="13" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <!-- Section 1: Pairing Code -->
+                                        <Border Background="{ThemeResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="12">
+                                            <StackPanel Spacing="8">
+                                                <TextBlock Text="પેરિંગ કોડ વડે જોડો (Pairing Code)" FontWeight="SemiBold" FontSize="13" />
+                                                <TextBlock Text="ફોનમાં Developer Options &gt; Wireless Debugging &gt; 'Pair device with pairing code' પર ક્લિક કરી મળેલ વિગતો લખો:"
+                                                           FontSize="11" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <TextBox x:Name="AdbEndpointBox" Header="IP Address &amp; Pairing Port" PlaceholderText="e.g. 192.168.29.209:33269" FontSize="12" />
+                                                <TextBox x:Name="AdbCodeBox" Header="6-Digit Pairing Code" PlaceholderText="e.g. 123456" MaxLength="6" FontSize="12" />
+                                                <Button x:Name="AdbPairSubmitButton" Click="AdbPairSubmitButton_Click" HorizontalAlignment="Stretch" Padding="6">
+                                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                                        <FontIcon Glyph="&#xE8EA;" FontSize="13" />
+                                                        <TextBlock Text="Pair &amp; Connect" FontSize="12" />
+                                                    </StackPanel>
+                                                </Button>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Section 2: QR Code Scan -->
+                                        <Expander Header="QR Code સ્કેનર (વૈકલ્પિક)" HorizontalAlignment="Stretch">
+                                            <StackPanel Spacing="8" Padding="8">
+                                                <TextBlock Text="ફોનમાં 'Pair device with QR code' પર ક્લિક કરી આ QR સ્કેન કરો:"
+                                                           FontSize="11" TextWrapping="Wrap" Foreground="{ThemeResource TextFillColorSecondaryBrush}" />
+                                                <Border BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1" CornerRadius="8" Padding="8" HorizontalAlignment="Center" Background="White">
+                                                    <Image x:Name="AdbQrImage" Width="180" Height="180" Stretch="Uniform" />
+                                                </Border>
+                                                <TextBlock x:Name="AdbQrHint" HorizontalAlignment="Center" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}" Text="QR Code" />
+                                            </StackPanel>
+                                        </Expander>
+                                    </StackPanel>
+                                </ScrollViewer>
+                            </Flyout>
+                        </Button.Flyout>
+                    </Button>
+                </StackPanel>
+            </Grid>
+
+            <ItemsRepeater ItemsSource="{x:Bind ViewModel.DiscoveredDevices, Mode=OneWay}">
+                <ItemsRepeater.Layout>
+                    <StackLayout Orientation="Vertical" Spacing="8" />
+                </ItemsRepeater.Layout>
+                <ItemsRepeater.ItemTemplate>
+                    <DataTemplate x:DataType="models:DiscoveredDevice">
+                        <wuc:SettingsCard Description="{x:Bind VerificationKey}" Header="{x:Bind Name}">
+                            <wuc:SettingsCard.HeaderIcon>
+                                <FontIcon Glyph="&#xE8EA;" />
+                            </wuc:SettingsCard.HeaderIcon>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button
+                                    Click="ConnectButton_Click"
+                                    Tag="{x:Bind}">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="Connect" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </wuc:SettingsCard>
+                    </DataTemplate>
+                </ItemsRepeater.ItemTemplate>
+            </ItemsRepeater>
+
+            <!--  Empty State  -->
+            <StackPanel
+                Margin="0,32"
+                HorizontalAlignment="Center"
+                Spacing="8"
+                Visibility="{x:Bind ViewModel.DiscoveredDevices.Count, Mode=OneWay, Converter={StaticResource InverseCountToVisibilityConverter}}">
+                <FontIcon
+                    FontSize="32"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Glyph="&#xE8EA;" />
+                <TextBlock
+                    HorizontalAlignment="Center"
+                    FontSize="14"
+                    Foreground="{ThemeResource TextFillColorSecondaryBrush}"
+                    Text="{helpers:ResourceString Name=NoDevicesFound}" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>

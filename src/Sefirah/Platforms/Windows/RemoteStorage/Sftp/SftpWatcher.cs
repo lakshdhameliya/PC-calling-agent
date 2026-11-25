@@ -1,0 +1,268 @@
+using Renci.SshNet;
+using Renci.SshNet.Common;
+using Sefirah.Platforms.Windows.Abstractions;
+using Sefirah.Platforms.Windows.Helpers;
+using Sefirah.Platforms.Windows.RemoteStorage.Abstractions;
+using Sefirah.Platforms.Windows.RemoteStorage.RemoteAbstractions;
+using FileAttributes = System.IO.FileAttributes;
+
+namespace Sefirah.Platforms.Windows.RemoteStorage.Sftp;
+
+public sealed partial class SftpWatcher(
+    ISyncProviderContextAccessor syncContextAccessor,
+    ISftpContextAccessor contextAccessor,
+    SftpClient client,
+    ILogger logger
+) : IRemoteWatcher
+{
+    private readonly SyncProviderContext _syncContext = syncContextAccessor.Context;
+    private readonly SftpContext _context = contextAccessor.Context;
+    private readonly string[] _relativeDirectoryNames = [".", "..", "#Recycle"];
+    private Dictionary<string, DateTime> _knownFiles = [];
+    private bool _running = false;
+    private readonly CancellationTokenSource _cancellationTokenSource = new();
+
+    public event RemoteCreateHandler? Created;
+    public event RemoteChangeHandler? Changed;
+    public event RemoteRenameHandler? Renamed;
+    public event RemoteDeleteHandler? Deleted;
+    public event RemoteReconnectHandler? Reconnected;
+
+    public async void Start(CancellationToken stoppingToken = default)
+    {
+        ObjectDisposedException.ThrowIf(_cancellationTokenSource.IsCancellationRequested, this);
+        if (_running)
+        {
+            throw new Exception("Already running");
+        }
+        _running = true;
+
+        try
+        {
+            using var linkedTokenSource = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, _cancellationTokenSource.Token);
+            while (!linkedTokenSource.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    if (!client.IsConnected)
+                    {
+                        await TryReconnectAsync(linkedTokenSource.Token);
+                        if (!client.IsConnected)
+                        {
+                            await Task.Delay(TimeSpan.FromSeconds(5), linkedTokenSource.Token);
+                            continue;
+                        }
+                    }
+
+                    var foundFiles = IsHydrated("") ? FindFiles("") : [];
+
+                    if (client.IsConnected)
+                    {
+                        var removedFiles = _knownFiles.Keys.Except(foundFiles.Keys).ToArray();
+                        foreach (var removedFile in removedFiles)
+                        {
+                            Deleted?.Invoke(removedFile);
+                        }
+
+                        var addedFiles = foundFiles.Keys.Except(_knownFiles.Keys).ToArray();
+                        foreach (var addedFile in addedFiles)
+                        {
+                            Created?.Invoke(addedFile);
+                        }
+
+                        var updatedFiles = foundFiles
+                            .Where((pair) => _knownFiles.ContainsKey(pair.Key) && _knownFiles[pair.Key] < pair.Value)
+                            .Select(pair => pair.Key)
+                            .ToArray();
+                        foreach (var updatedFile in updatedFiles)
+                        {
+                            Changed?.Invoke(updatedFile);
+                        }
+
+                        _knownFiles = foundFiles;
+                    }
+
+                    await Task.Delay(_context.WatchPeriodSeconds * 1000, linkedTokenSource.Token);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (SshConnectionException ex)
+                {
+                    logger.Warn("SSH connection lost in SFTP watcher", ex);
+                }
+                catch (SshOperationTimeoutException ex)
+                {
+                    logger.Warn("SFTP operation timed out, reconnecting", ex);
+                    // Reconnected on the next loop, which also syncs changes missed by timed out tasks
+                    try
+                    {
+                        client.Disconnect();
+                    }
+                    catch (Exception disconnectEx)
+                    {
+                        logger.Error("Error disconnecting SFTP client", disconnectEx);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Error("Unexpected error in SFTP watcher", ex);
+                    await Task.Delay(TimeSpan.FromSeconds(5), linkedTokenSource.Token);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Stopped while waiting to retry
+        }
+        catch (Exception ex)
+        {
+            logger.Error("SFTP watcher stopped unexpectedly", ex);
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private Dictionary<string, DateTime> FindFiles(string relativeDirectory)
+    {
+        if (client is null || !client.IsConnected)
+        {
+            throw new SshConnectionException("SFTP client is not connected");
+        }
+
+        var serverDirectory = Path.Join(_context.Directory, relativeDirectory).Replace(@"\", "/");
+        var sftpFiles = client.ListDirectory(serverDirectory);
+
+        var dirEntries = sftpFiles
+            .Where(sftpFile => sftpFile.IsDirectory &&
+                               !_relativeDirectoryNames.Contains(sftpFile.Name) &&
+                               !FileHelper.IsSystemDirectory(PathMapper.GetRelativePath(sftpFile.FullName, _context.Directory)))
+            .ToArray();
+
+        var directories = dirEntries.ToDictionary(
+            dir => PathMapper.GetRelativePath(dir.FullName, _context.Directory),
+            _ => DateTime.MaxValue
+        );
+
+        // Get files from current directory
+        var files = sftpFiles
+            .Where(sftpFile => sftpFile.IsRegularFile && !sftpFile.Name.EndsWith(SftpConstants.PartialFileSuffix))
+            .ToDictionary(
+                file => PathMapper.GetRelativePath(file.FullName, _context.Directory),
+                file => file.LastWriteTimeUtc
+            );
+
+        // Recursively get files from hydrated subdirectories
+        var subFiles = directories.Keys
+            .SelectMany(FindFilesOrKnown)
+            .ToDictionary(pair => pair.Key, pair => pair.Value);
+
+        return directories
+            .Concat(files)
+            .Concat(subFiles)
+            .ToDictionary();
+    }
+
+    /// <summary>Returns the previous entries when the folder can't be read.</summary>
+    private IEnumerable<KeyValuePair<string, DateTime>> FindFilesOrKnown(string relativeDirectory)
+    {
+        try
+        {
+            return IsHydrated(relativeDirectory) ? FindFiles(relativeDirectory) : [];
+        }
+        catch (Exception ex) when (ex is not (SshConnectionException or SshOperationTimeoutException))
+        {
+            logger.Warn($"Unable to read {relativeDirectory}, keeping its previous entries", ex);
+            return [.. _knownFiles.Where(pair => pair.Key.StartsWith(relativeDirectory + "/"))];
+        }
+    }
+
+    private async Task TryReconnectAsync(CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+
+        try
+        {
+            if (client?.IsConnected ?? false)
+            {
+                try
+                {
+                    client.Disconnect();
+                }
+                catch (Exception ex) 
+                { 
+                    logger.Error("Error disconnecting SFTP client", ex);
+                }
+            }
+
+            if (client != null)
+            {
+                try
+                {
+                    client.Connect();
+                    logger.Info("Successfully reconnected to SFTP server");
+                    Reconnected?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    logger.Error("Failed to connect SFTP client", ex);
+                    // Check cancellation before delay
+                    cancellationToken.ThrowIfCancellationRequested();
+                    await Task.Delay(TimeSpan.FromSeconds(5), cancellationToken);
+                }
+            }
+            else
+            {
+                logger.Error("SFTP client is null during reconnection attempt");
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.Error("Unexpected error during reconnection", ex);
+            throw;
+        }
+    }
+
+    private bool IsHydrated(string relativePath)
+    {
+        var clientPath = Path.Join(_syncContext.RootDirectory, relativePath);
+        return Path.Exists(clientPath) &&
+               !File.GetAttributes(clientPath).HasFlag(FileAttributes.Offline);
+    }
+
+    public void Dispose()
+    {
+        if (!_cancellationTokenSource.IsCancellationRequested)
+        {
+            try
+            {
+                logger.Debug("Disposing SFTP watcher");
+                _cancellationTokenSource.Cancel();
+                
+                // Safely disconnect the client
+                try
+                {
+                    if (client?.IsConnected ?? false)
+                    {
+                        client.Disconnect();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logger.Error("Error disconnecting client during disposal", ex);
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+                // Ignore if already disposed
+            }
+            finally
+            {
+                _cancellationTokenSource.Dispose();
+            }
+        }
+    }
+}
