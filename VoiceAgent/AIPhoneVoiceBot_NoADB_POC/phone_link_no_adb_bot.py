@@ -5,8 +5,10 @@ files are imported read-only for the tested FAQ matcher, VAD and CABLE voice.
 """
 import argparse
 import collections
+import concurrent.futures
 import functools
 import datetime as dt
+import io
 import json
 import os
 import queue
@@ -232,10 +234,45 @@ WELCOME_AFTER_PICKUP_SECONDS = 0.02
 RING_TOAST_WAIT_SECONDS = 4.0
 FALLBACK_WELCOME_GUARD_SECONDS = 6.0
 HINDI_RETRY_WINDOW_SECONDS = 20.0
+# Free, keyless browser-recognition endpoint used only after the user enabled
+# online STT.  Hindi, Hinglish and Gujarati candidates run in parallel; local
+# Whisper remains the no-network fallback.
+ONLINE_STT_ENABLED = True
+ONLINE_STT_TIMEOUT_SECONDS = 2.5
+ONLINE_STT_LANGUAGES = ("hi-IN", "en-IN", "gu-IN")
+_GOOGLE_WEB_SPEECH_KEY = "AIzaSyBOti4mM-6x9WDnZIjIeyEU21OpBXqWBgw"
 
 
 def normalize_hindi_unknown(value):
     return re.findall(r"[\u0900-\u097f]+", value)
+
+
+def correct_domain_stt(text):
+    """Repair repeatable phone-line spellings of the BestZone brand.
+
+    A caller saying ``BestZone kya hai`` reaches the Hindi recognizers as such
+    variants as ``बेस्ट लोन क्या है``, ``बेश्टर दोन क्या है`` and
+    ``वेस्टर्न क्या है``.  These are acoustic spellings of one known business
+    name, not separate caller intents.  Correct only the tightly bounded
+    brand-like variants; ordinary phrases such as ``best seller`` are kept.
+    """
+    value = str(text or "").strip()
+    if not value:
+        return value
+    value = re.sub(
+        r"(?:बेश्ण[\u0900-\u097f]*|बेश्टर\s*(?:दोन|डोन)?|वेस्टर्न|"
+        r"बेस्ट\s*(?:ज़ोन|जोन|जॉन|लोन|रन|दोन|डोन|नाम)|"
+        r"\bbest\s*(?:zone|zon|john|loan|run|drone|name)\b|\bwestern\b)",
+        "बेस्टज़ोन",
+        value,
+        flags=re.IGNORECASE,
+    )
+    # Fine-tuned Hindi models often render the ending of "क्या है" as
+    # "गाए" / "गाइ" after the brand.  This narrow replacement only applies
+    # to a BestZone question, never to unrelated caller wording.
+    if "बेस्टज़ोन" in value:
+        value = re.sub(r"\b(?:गाए|गाइ|काए|काइ)\b", "क्या है", value)
+    return value
 
 
 def preferred_language(question):
@@ -1341,7 +1378,8 @@ class FrontbitLinkNoAdbBot:
             live_window_padding_seconds=LIVE_WINDOW_PADDING_SECONDS,
             faq_matcher_warm_ms=round((time.perf_counter() - matcher_started) * 1000, 1),
             reply_voices=f"{CableVoice._voice_name('en')} / {CableVoice._voice_name('hi')} / {CableVoice._voice_name('gu')}",
-            hindi_listening_mode="hybrid_preview_final_confirm",
+            hindi_listening_mode="final_online_faq_then_local_fallback",
+            online_stt_enabled=ONLINE_STT_ENABLED,
             hindi_endpoint_ms=HINDI_ENDPOINT_FRAMES * 100,
             hindi_max_utterance_seconds=HINDI_MAX_UTTERANCE_FRAMES / 10,
             hindi_beam_size=self.hindi_beam_size,
@@ -1450,7 +1488,10 @@ class FrontbitLinkNoAdbBot:
             self.publish_ready()
 
     def previews_enabled(self):
-        return self.hindi_stt is not None
+        # Preview decodes use the same single CPU worker as the final decode.
+        # They added ~0.8-1.8 seconds of queue delay but are no longer allowed
+        # to answer, so final-only processing is both faster and safer.
+        return False
 
     def load_hindi_stt(self):
         """Pick the fastest working Hindi STT runtime and warm it.
@@ -1557,9 +1598,156 @@ class FrontbitLinkNoAdbBot:
         if dropped:
             self.set_status(dropped_stale_chunks=dropped)
 
+    def _online_faq_score(self, text):
+        """Return a side-effect-free confidence score for one online STT text."""
+        value = correct_domain_stt(text)
+        if not value:
+            return (0, 0.0), value
+        try:
+            answer, score, _ = hindi_match(fix_stt_words(value))
+            if answer is not None and answer in active_faq_answers():
+                return (3, float(score)), value
+        except Exception:
+            pass
+        try:
+            catalog = getattr(self, "bestzone", None) or bestzone_faq.load_catalog()
+            result = bestzone_faq.match(value, catalog)
+            if result.get("kind") is not None:
+                return (2, float(result.get("score", 0.0))), value
+        except Exception:
+            pass
+        return (0, 0.0), value
+
+    def transcribe_online_faq(self, audio):
+        """Fast browser STT for FAQ calls, with local Whisper as fallback.
+
+        The free endpoint gives materially better Hindi/Hinglish recognition on
+        the 3.5 mm phone line than a small CPU-only model.  It receives only a
+        completed caller utterance; all three language recognizers run at the
+        same time and only a candidate that matches this local FAQ is accepted.
+        """
+        if not ONLINE_STT_ENABLED or len(audio) < 3200:
+            return "", 0.0, None
+        started = time.perf_counter()
+        try:
+            import requests
+            import soundfile as sf
+
+            flac = io.BytesIO()
+            sf.write(flac, np.asarray(audio, dtype=np.float32), 16000,
+                     format="FLAC", subtype="PCM_16")
+            payload = flac.getvalue()
+        except Exception as exc:
+            self.log.diagnostic("online_stt_encode_error", error=str(exc))
+            return "", time.perf_counter() - started, None
+
+        def recognize(language):
+            url = (
+                "https://www.google.com/speech-api/v2/recognize"
+                f"?client=chromium&lang={language}&key={_GOOGLE_WEB_SPEECH_KEY}&pFilter=0"
+            )
+            try:
+                response = requests.post(
+                    url,
+                    data=payload,
+                    headers={"Content-Type": "audio/x-flac; rate=16000"},
+                    timeout=ONLINE_STT_TIMEOUT_SECONDS,
+                )
+                if response.status_code != 200:
+                    return []
+                alternatives = []
+                for line in response.text.splitlines():
+                    data = json.loads(line)
+                    results = data.get("result") or []
+                    if results:
+                        alternatives.extend(results[0].get("alternative") or [])
+                return [
+                    (str(item.get("transcript", "")).strip(),
+                     float(item.get("confidence", 0.0) or 0.0), language)
+                    for item in alternatives
+                    if str(item.get("transcript", "")).strip()
+                ]
+            except Exception:
+                return []
+
+        candidates = []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=len(ONLINE_STT_LANGUAGES)) as pool:
+            futures = [pool.submit(recognize, language) for language in ONLINE_STT_LANGUAGES]
+            for future in futures:
+                for raw, confidence, language in future.result():
+                    faq_score, corrected = self._online_faq_score(raw)
+                    words = len(re.findall(r"[A-Za-z]+|[\u0900-\u097f]+|[\u0a80-\u0aff]+", corrected))
+                    candidates.append((faq_score, confidence, words, corrected, language, raw))
+
+        elapsed = time.perf_counter() - started
+        accepted = [item for item in candidates if item[0][0] > 0]
+        if not accepted:
+            self.log.diagnostic(
+                "online_stt_no_faq_match",
+                seconds=round(elapsed, 3),
+                candidates=[{"text": item[3], "language": item[4]} for item in candidates[:8]],
+            )
+            return "", elapsed, None
+        _, confidence, _, text, language, raw = max(
+            accepted, key=lambda item: (item[0][0], item[0][1], item[1], item[2])
+        )
+        self.last_hindi_diagnostics = [{
+            "text": text,
+            "raw": raw,
+            "source": f"online_web_stt:{language}",
+            "confidence": round(confidence, 3),
+            "duration": round(elapsed, 3),
+        }]
+        return text, elapsed, f"online_web_stt:{language}"
+
     def retry_hindi_stt(self, audio, timestamp, timing):
-        """Skip redundant 5-second multi-pass STT to keep phone response instant."""
-        return None
+        """Use a second, independent local decode only for an unclear question.
+
+        The fine-tuned Hindi model is the fast first pass.  Phone audio often
+        mixes Gujarati/Hinglish brand names with Hindi, where the general
+        multilingual small model hears the *shape* of the phrase better.  We
+        run it only after the first FAQ match failed, so ordinary calls stay
+        fast and uncertain calls get an accuracy rescue without any cloud STT.
+        """
+        fallback_model = getattr(self, "hindi_stt", None)
+        if fallback_model is None or fallback_model is getattr(self, "hindi_primary_stt", None):
+            return None
+
+        candidates = []
+        # Plain general-model decode avoids prompt leakage.  The narrowly
+        # scoped topic pass is useful only when the plain decode misses a
+        # business name or FAQ keyword.
+        for source, prompt in (
+            ("multilingual_small", None),
+            ("multilingual_small_domain_hint", HINDI_TOPIC_PROMPT),
+        ):
+            text, seconds = self.transcribe_hindi(audio, model=fallback_model, prompt=prompt)
+            corrected = correct_domain_stt(text)
+            if not corrected or is_topic_hint_leak(corrected):
+                continue
+            answer, score, alias = self.match_question(corrected)
+            candidates.append((answer is not None and score >= live_gate(alias), score,
+                               corrected, answer, alias, source, seconds))
+            # The plain pass already has an exact, verified FAQ intent.  Do
+            # not spend another ~2 seconds on the hinted pass.
+            if answer is not None and score >= 0.95:
+                break
+
+        if not candidates:
+            return None
+        # A verified FAQ match wins; otherwise keep the highest-scoring
+        # candidate for diagnostics but do not guess an answer.
+        matched = [item for item in candidates if item[0]]
+        if not matched:
+            self.log.diagnostic(
+                "hindi_stt_fallback_no_match",
+                candidates=[{"text": item[2], "score": round(float(item[1]), 3), "source": item[5]}
+                            for item in candidates],
+            )
+            return None
+        _, score, question, answer, alias, source, seconds = max(matched, key=lambda item: item[1])
+        timing["fallback_stt_ms"] = round(seconds * 1000, 1)
+        return question, answer, score, alias, source
 
     def transcribe_hindi(self, audio, preview=False, full_window=False, model=None, prompt=None):
         self.last_hindi_diagnostics = []
@@ -1573,27 +1761,19 @@ class FrontbitLinkNoAdbBot:
         norm_audio = (audio / max(peak, 0.55) * 0.9).astype(np.float32)
         started = time.perf_counter()
 
-        # 1. Primary STT: Google Speech Recognition (Ultra-fast, 0 hallucination, high Hindi accuracy)
-        if len(audio) >= 4000:
-            try:
-                import speech_recognition as sr
-                int16_pcm = (np.clip(norm_audio, -1.0, 1.0) * 32767.0).astype(np.int16).tobytes()
-                audio_data = sr.AudioData(int16_pcm, 16000, 2)
-                r = sr.Recognizer()
-                google_text = r.recognize_google(audio_data, language="hi-IN")
-                if google_text and len(google_text.strip()) > 0:
-                    clean_text = google_text.strip()
-                    self.last_hindi_diagnostics = [{
-                        "text": clean_text,
-                        "source": "google_stt",
-                        "duration": round(time.perf_counter() - started, 3),
-                        "no_speech": 0.0,
-                    }]
-                    return clean_text, 1.0
-            except Exception:
-                pass
+        # User-approved online FAQ STT is the fast path. It runs Hindi,
+        # Hinglish and Gujarati recognition in parallel and returns only when
+        # one locally known FAQ matches; otherwise the local model below is
+        # the safe fallback.
+        if not preview and model is None:
+            online_text, online_seconds, online_source = self.transcribe_online_faq(norm_audio)
+            if online_text:
+                return online_text, online_seconds
 
-        # 2. Backup STT: Local Neural Whisper (Fine-tuned Hindi vasista22 int8 / Faster-Whisper)
+        # Local Neural Whisper only: this keeps caller audio on this PC and
+        # avoids depending on an external recognition service or API key.
+        # The fine-tuned Hindi model is first; unclear code-switched speech is
+        # re-heard by the multilingual local model in retry_hindi_stt().
         model = model or getattr(self, "hindi_primary_stt", None) or self.hindi_stt
         if model is None or not hasattr(model, "transcribe"):
             return "", 0.0
@@ -1773,10 +1953,12 @@ class FrontbitLinkNoAdbBot:
 
     def hindi_transcript(self, audio, utterance_id, final, voiced_frames):
         """Transcribe audio with speculative preview reuse for zero latency."""
-        # Instant preview reuse: if preview already transcribed this question while the caller spoke
+        # Reuse only when the final window is effectively identical to the
+        # preview. A 1.0s preview followed by a 2.0s final used to return the
+        # preview ("बेस्ट") and silently discard the rest of the sentence.
         if final and utterance_id in self.preview_transcripts:
             prev_voiced, prev_text = self.preview_transcripts.pop(utterance_id, (0, ""))
-            if prev_text and (voiced_frames is None or abs(voiced_frames - prev_voiced) <= 5):
+            if prev_text and (voiced_frames is None or abs(voiced_frames - prev_voiced) <= 1):
                 self.last_final_transcript = prev_text
                 return prev_text, 0.001, True
 
@@ -2355,9 +2537,13 @@ class FrontbitLinkNoAdbBot:
         # the FAQ whose question sounds closest, if it is clearly the best.
         # (also before the CSV's general answer: the website FAQ explains more,
         # e.g. "भी लवरे कितने दिन में" = डिलीवरी में कितने दिन लगते हैं)
-        sound_answer, sound_alias = sound_match(question)
-        if sound_answer is not None:
-            return sound_answer, 0.80, sound_alias
+        # A sound-only match needs at least one real topic word.  Without
+        # that guard, generic fragments such as "कैसे मिलता है" incorrectly
+        # triggered the product-list answer.
+        if _topic_words(question):
+            sound_answer, sound_alias = sound_match(question)
+            if sound_answer is not None:
+                return sound_answer, 0.80, sound_alias
         if result["kind"] is not None:
             return result["answer"], result["score"], result["alias"]
         if answer is not None and answer in active_faq_answers():
@@ -2752,15 +2938,14 @@ class FrontbitLinkNoAdbBot:
             self.on_speech_start,
             threshold=max(self.args.threshold, DIRECT_HINDI_VAD_THRESHOLD)
             if FORCE_LANGUAGE == "hi" else self.args.threshold,
-            # Hindi hybrid mode starts a preview decode while speech is still
-            # active. Keep a 700 ms endpoint so normal pauses inside a Hindi
-            # sentence do not become separate caller questions, and allow
-            # long address/product questions to finish before STT runs.
+            # Final-only STT avoids CPU preview work delaying the completed
+            # caller sentence. Keep a 700 ms endpoint so normal pauses inside
+            # Hindi/Hinglish speech do not become separate questions.
             silence_frames=HINDI_ENDPOINT_FRAMES if FORCE_LANGUAGE == "hi" else 2,
             max_frames=HINDI_MAX_UTTERANCE_FRAMES if FORCE_LANGUAGE == "hi" else 30,
-            enable_previews=True,
+            enable_previews=False,
             end_ratio=SPEECH_END_RATIO if FORCE_LANGUAGE == "hi" else 0.0,
-            periodic_previews=True,
+            periodic_previews=False,
         )
         self.segmenter = segmenter
         chunks = 0
